@@ -7,10 +7,11 @@ from random import Random
 from agents.brain import Action, Brain, Decision, RandomBrain
 from agents.genome import Genome
 from agents.human import Human
+from agents.learning import LearningBrain, Physiology
 from agents.observation import Observation, TileObservation
 from config import Config, REPRODUCTIVE_TYPES
 from simulation.events import Event, EventSink
-from simulation.statistics import Statistics, summarize_genomes
+from simulation.statistics import Statistics, summarize_genomes, summarize_learning
 from systems.communication import Communication
 from systems.reproduction import Reproduction
 from world.world import World
@@ -25,9 +26,11 @@ MOVEMENT = {
 
 class Simulation:
     def __init__(self, config: Config, *, event_sink: EventSink | None = None,
-                 brain_factory: Callable[[Random, Config], Brain] = RandomBrain) -> None:
+                 brain_factory: Callable[[Random, Config], Brain] | None = None) -> None:
         self.config = config
         self.event_sink = event_sink
+        if brain_factory is None:
+            brain_factory = LearningBrain if config.brain == "learning" else RandomBrain
         self.brain_factory = brain_factory
         seed = config.random_seed
         # Named streams isolate world generation, placement, ordering, and brains.
@@ -56,7 +59,8 @@ class Simulation:
         self._next_id = config.initial_population
         self.communication = Communication(config.signal_vocab_size, config.signal_range)
         self.tick = 0
-        self.statistics = Statistics(tick=0, population=self.population, **summarize_genomes(self.agents))
+        self.statistics = Statistics(tick=0, population=self.population,
+                                     **summarize_genomes(self.agents), **summarize_learning(self.agents))
         if self.event_sink is not None:
             self.event_sink(Event(0, "run_started", details={"config": asdict(config), "founder_genome": founder_genome}))
 
@@ -64,7 +68,7 @@ class Simulation:
     def create_default(
         cls, seed: int | None = None, *, config: Config | None = None,
         event_sink: EventSink | None = None,
-        brain_factory: Callable[[Random, Config], Brain] = RandomBrain,
+        brain_factory: Callable[[Random, Config], Brain] | None = None,
     ) -> Simulation:
         settings = config if config is not None else Config()
         if seed is not None:
@@ -128,10 +132,13 @@ class Simulation:
             self.reproduction.begin_tick(order)
         deaths = food_consumed = water_consumed = signals_emitted = 0
         reproduction_attempts = population_limit_blocks = 0
+        learning_updates = exploratory_actions = exploitative_actions = 0
         death_causes = {"starvation": 0, "dehydration": 0, "old_age": 0, "energy": 0}
         newborns = []
 
         for human in order:
+            learner = human.brain if isinstance(human.brain, LearningBrain) else None
+            previous_updates = learner.learning_updates if learner is not None else 0
             observation = self.observe(human)
             if self.event_sink is not None:
                 start_x, start_y = human.x, human.y
@@ -169,6 +176,13 @@ class Simulation:
             deaths += int(cause is not None)
             if cause is not None:
                 death_causes[cause] += 1
+            observe_outcome = getattr(human.brain, "observe_outcome", None)
+            if observe_outcome is not None:
+                observe_outcome(Physiology.capture(human))
+            if learner is not None:
+                learning_updates += learner.learning_updates - previous_updates
+                exploratory_actions += int(learner.last_exploratory)
+                exploitative_actions += int(not learner.last_exploratory)
 
             if self.event_sink is not None:
                 self.event_sink(Event(
@@ -184,6 +198,10 @@ class Simulation:
                                   "energy": human.energy, "alive": human.alive},
                         "death_cause": cause,
                         "reproduction_failure": reproduction_failure,
+                        **({"learning": {"reward": learner.last_reward,
+                                         "exploratory": learner.last_exploratory,
+                                         "updates": learner.learning_updates,
+                                         "memory_size": learner.memory_size}} if learner is not None else {}),
                     },
                 ))
 
@@ -203,6 +221,9 @@ class Simulation:
         previous = self.statistics
         self.statistics = Statistics(
             tick=self.tick, population=self.population,
+            total_learning_updates=previous.total_learning_updates + learning_updates,
+            exploratory_actions=previous.exploratory_actions + exploratory_actions,
+            exploitative_actions=previous.exploitative_actions + exploitative_actions,
             deaths=previous.deaths + deaths,
             food_consumed=previous.food_consumed + food_consumed,
             water_consumed=previous.water_consumed + water_consumed,
@@ -219,6 +240,7 @@ class Simulation:
             old_age_deaths=previous.old_age_deaths + death_causes["old_age"],
             energy_deaths=previous.energy_deaths + death_causes["energy"],
             **summarize_genomes(self.agents),
+            **summarize_learning(self.agents),
         )
         assert self.population == self.config.initial_population + self.statistics.births - self.statistics.deaths
         return self.statistics

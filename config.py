@@ -54,6 +54,12 @@ WATER_REGENERATION_PROBABILITY = 0
 FOOD_CAPACITY = None
 WATER_CAPACITY = None
 MAX_POPULATION = None
+BRAIN = "random"
+LEARNING_RATE = 0.2
+LEARNING_DISCOUNT = 0.9
+LEARNING_EPSILON = 0.2
+LEARNING_MEMORY_CAPACITY = 256
+LEARNING_NEED_BINS = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +108,12 @@ class Config:
     food_capacity: int | None = FOOD_CAPACITY
     water_capacity: int | None = WATER_CAPACITY
     max_population: int | None = MAX_POPULATION
+    brain: str = BRAIN
+    learning_rate: float = LEARNING_RATE
+    learning_discount: float = LEARNING_DISCOUNT
+    learning_epsilon: float = LEARNING_EPSILON
+    learning_memory_capacity: int = LEARNING_MEMORY_CAPACITY
+    learning_need_bins: int = LEARNING_NEED_BINS
 
     @classmethod
     def evolution(cls, **overrides) -> "Config":
@@ -121,16 +133,22 @@ class Config:
             "signal_range", "random_seed", "max_ticks", "status_interval",
             "min_reproductive_age", "max_reproductive_age", "reproduction_radius",
             "reproduction_cooldown", "food_capacity", "water_capacity", "max_population",
+            "learning_memory_capacity", "learning_need_bins",
         }
         positive_fields = {
             "world_width", "world_height", "max_hunger", "max_thirst",
             "max_age", "signal_vocab_size", "status_interval",
             "reproduction_energy_cost", "max_energy", "food_capacity", "water_capacity",
+            "learning_rate", "learning_epsilon", "learning_memory_capacity", "learning_need_bins",
         }
         optional_fields = {"max_age", "max_reproductive_age", "food_capacity", "water_capacity", "max_population"}
         boolean_fields = {"reproduction_enabled", "energy_depletion_lethal"}
         for field in fields(self):
             name, value = field.name, getattr(self, field.name)
+            if name == "brain":
+                if value not in ("random", "learning"):
+                    raise ValueError("brain must be 'random' or 'learning'")
+                continue
             if name in optional_fields and value is None:
                 continue
             if name in boolean_fields:
@@ -147,7 +165,8 @@ class Config:
             if value < 0 or (name in positive_fields and value == 0):
                 raise ValueError(f"{name} must be {'positive' if name in positive_fields else 'nonnegative'}")
         for name in ("signal_probability", "mutation_rate", "mutation_strength", "reproduction_need_fraction",
-                     "food_regeneration_probability", "water_regeneration_probability"):
+                     "food_regeneration_probability", "water_regeneration_probability",
+                     "learning_rate", "learning_discount", "learning_epsilon"):
             if getattr(self, name) > 1:
                 raise ValueError(f"{name} must be between 0 and 1")
         if self.perception_radius > GENOME_BOUNDS["perception_radius"][1]:

@@ -1,0 +1,25 @@
+{
+  "source": "v0.2 commit 1e53e9e, tests.test_statistics.dynamics, JSON separators=(',', ':'), default=dataclasses.asdict",
+  "seed": 0,
+  "ticks": 100,
+  "statistics": {
+    "tick": 100,
+    "population": 232,
+    "deaths": 4,
+    "food_consumed": 972,
+    "water_consumed": 999,
+    "signals_emitted": 1456,
+    "births": 136,
+    "highest_generation": 4,
+    "reproduction_attempts": 1825,
+    "successful_reproductions": 136,
+    "population_limit_blocks": 0,
+    "food_regenerated": 2403,
+    "water_regenerated": 2338,
+    "starvation_deaths": 0,
+    "dehydration_deaths": 3,
+    "old_age_deaths": 0,
+    "energy_deaths": 1
+  },
+  "state_sha256": "8a43cb89eb9629e47657dce9c1362d8eb9326fea661a8a38add15e5852463e82"
+}

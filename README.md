@@ -1,13 +1,16 @@
-# Artificial Civilization Simulation — v0.2
+# Artificial Civilization Simulation — v0.3
 
 A headless, standard-library-only artificial-life simulation for experiments in
-emergent behavior. v0.2 extends the v0.1 grid, local perception, random brains,
-survival, and meaningless signals with reproduction, inherited traits, mutation,
-renewable resources, and lightweight lineage tracking.
+emergent behavior. v0.3 adds optional individual memory and experience-based
+learning to the existing survival, reproduction, inheritance, mutation, renewable
+resources, and lineage systems. The experiment is whether local sensory
+experience and physiological consequences can produce useful acquired behavior.
+The default RandomBrain remains the unchanged v0.2 control.
 
-**Agents still do not learn. Signals have no predefined meaning, and RandomBrain
-does not intentionally communicate. Agriculture, economics, emotions, religion,
-technology, crafting, combat, culture, and civilization are not implemented.**
+**v0.3 does not implement language learning or meaningful communication.** Only
+LearningBrain learns; signals have no predefined meaning and neither controller
+intentionally communicates. Agriculture, economics, emotions, religion,
+technology, crafting, combat, culture, and civilization are not implemented.
 Renewable food is an environmental process, not farming. Higher-level phenomena
 remain research questions; there are no scripted civilization stages or outcomes.
 
@@ -23,6 +26,14 @@ python3 main.py --mode legacy --seed 42 --ticks 1000 --csv data/legacy.csv
 # Evolution preset: reproduction, energy metabolism, mutation, regeneration.
 python3 main.py --mode evolution --seed 42 --ticks 1000 --csv data/evolution.csv
 
+# Same ecology, different controllers. Random remains the default.
+python3 main.py --mode evolution --brain random --seed 0 --ticks 1000 --csv data/v03_random_seed_0.csv
+python3 main.py --mode evolution --brain learning --seed 0 --ticks 1000 --csv data/v03_learning_seed_0.csv
+python3 main.py --mode evolution --brain learning --seed 0 --ticks 5000 --csv data/v03_learning_seed_0_5000.csv
+
+# Controlled repeated experience, independent of evolutionary claims.
+python3 -m experiments.learning_demo
+
 # Detailed logs are opt-in; start with a short run.
 python3 main.py --mode evolution --seed 42 --ticks 50 --events data/events.jsonl
 python3 main.py --help
@@ -33,13 +44,15 @@ python3 -m unittest discover -s tests -v
 explicitly with `--mode evolution` or `Config.evolution()`. Other CLI options are
 `--population` and `--status-every`. Both modes stop at extinction or the requested
 tick limit. Output destinations are overwritten only when explicitly supplied;
-CSV and events must use different paths. Generated files under `data/` are ignored
+CSV, its generated `.metadata.json` sidecar, and events must use different paths.
+Generated files under `data/` are ignored
 by Git. No GUI, rendering, multiprocessing, or automatic detailed history exists.
 
-The original 23 behavioral tests remain; the CSV round-trip assertion now accepts
-nullable and fractional trait columns. Additional tests cover pairing, eligibility,
-costs, cooldown, deferred births, fresh brains, lineage, mutation, capped resources,
-safeguards, death causes, full evolutionary replay, and logging independence.
+All 72 pre-v0.3 tests remain unchanged and pass. The 25 new tests cover exact
+Q updates and reward, real observation timing, bounded independent memory,
+fresh offspring, local sensing, exploration, signal isolation, complete replay,
+logging/statistics independence, accounting, extinction, CSV metadata, a stored
+pre-v0.3 control fixture, and a controlled demonstration of learned preference.
 
 ## Architecture
 
@@ -51,6 +64,7 @@ world/world.py             Grid, generation, movement, consumption, regeneration
 agents/human.py            Body, physiology, genome reference, lineage metadata
 agents/genome.py           Immutable Genome, inheritance, bounded mutation
 agents/brain.py            Brain protocol, Action, Decision, RandomBrain
+agents/learning.py         Bounded individual Q-learning and outcome snapshots
 agents/observation.py      Immutable local sensory records
 systems/communication.py   Meaning-free signals with spatial lookup
 systems/reproduction.py    Eligibility, local partner lookup, costs, cooldown
@@ -60,6 +74,9 @@ simulation/events.py       Optional generic event sink and JSONL writer
 tests/test_basic.py         Original v0.1 tests, with extended CSV schema support
 tests/test_evolution.py     v0.2 tests
 tests/test_statistics.py    Living-genome summaries and observation-only verification
+tests/test_learning.py      v0.3 learning, isolation, replay, and control regression
+tests/fixtures/             Pre-v0.3 deterministic control digest
+experiments/learning_demo.py Controlled repeated-resource learning validation
 ```
 
 The existing architecture is extended rather than replaced. A brain implements
@@ -78,6 +95,83 @@ to `Simulation`/`create_default` constructs a fresh controller for every founder
 and child. Brain memory, Python object state, and parents' RNG states are never
 inherited. Replacing only one agent's brain does not change the simulation's
 factory for later children.
+
+LearningBrain uses the same decision interface. After the existing action and
+physiology/death check, the controller calls an optional
+`observe_outcome(Physiology)` hook with immutable hunger, thirst, energy, and
+liveness values. It supplies no World or extra observation. A living learner
+updates the previous experience when its next ordinary observation arrives;
+terminal experiences update immediately. Custom brains without this hook retain
+their existing contract. The only ordering addition is this private learning
+feedback; biological action, reproduction, resource, and signal ordering is
+unchanged.
+
+## Individual memory and learning
+
+`LearningBrain` uses tabular **Q-learning**, with no pretrained values or
+resource-seeking action rules. All unseen state/action values start at zero.
+Its state consists of:
+
+- Hunger, thirst, and energy, each normalized by its configured limit and clipped
+  into `learning_need_bins=3` bins.
+- The direction of the nearest visible food tile and nearest visible water tile.
+  Nearest means Manhattan distance within the existing square perception window;
+  ties use `(dy, dx)`. Each direction is `(sign(dx), sign(dy))`, including `(0, 0)`
+  for the current cell. `(2, 2)` denotes no visible resource of that type.
+
+The encoder reads only the immutable Observation and the individual's body.
+Resources outside the inherited perception radius cannot affect these features.
+It ignores exact resource quantities beyond presence, exact distances after
+nearest selection, absolute position, tick, IDs, lineage, reproductive partners,
+and all heard signals. It has no world reference, map, pathfinding, or predefined
+direction-to-action preferences. Larger perception can supply additional local
+information, but receives no reward bonus or extra metabolic cost.
+
+Memory is an individual `OrderedDict` from state tuples to action-value lists,
+bounded to `learning_memory_capacity=256` states. Each row has seven action values,
+or eight when reproduction is enabled. Access during learning/action selection
+updates recency; the least recently used row is evicted at capacity. One pending
+transition stores the preceding state, action, body snapshot, and reward. No
+lifetime history is retained. Diagnostic reads do not allocate rows or consume
+randomness. **Every newborn starts with empty learned memory and zero updates.**
+Only the unchanged four genome traits are inherited; learning rate, exploration,
+memory capacity, and learned values are not heritable.
+
+For each action, let `before` be the body just before choosing and `after` be the
+body after that action and its ordinary physiology/death check. The exact reward
+is:
+
+```text
+r = (hunger_before - hunger_after) / max_hunger
+  + (thirst_before - thirst_after) / max_thirst
+  + (energy_after - energy_before) / max_energy
+```
+
+This uses actual physiological changes, including ordinary costs. There is no
+reward for seeing a resource, a specific action label, birth, perception radius,
+or signal, and no additional survival/death bonus. A partner's passive reproduction
+charge outside this individual's action interval is not retroactively included
+in that reward; it is reflected in the next observed body state. The model does
+not provide perfect causal attribution for interactions between turns.
+
+At the next real decision, update the preceding transition using:
+
+```text
+Q(s, a) += learning_rate * (r + learning_discount * max_a' Q(s_next, a') - Q(s, a))
+```
+
+Default `learning_rate=0.2`, `learning_discount=0.9`. Unseen next states have value
+zero; death bootstraps with zero. The simulator never obtains an extra future
+observation for learning. A surviving individual's last transition remains
+pending at an arbitrary run cutoff, so it is not counted as an update yet.
+
+Action selection is fixed epsilon-greedy: with `learning_epsilon=0.2`, choose
+uniformly among all available actions; otherwise choose uniformly among the
+highest-valued tied actions. Epsilon and learning rate must be in `(0, 1]`;
+discount is in `[0, 1]`. Exploration remains enabled throughout life. Reproduction
+is an ordinary available action, with its unchanged physiological costs and no
+fitness reward. Signalling continues as independent random emission according
+to the inherited probability, and heard signals do not enter the learning state.
 
 ## Physical rules and tick timing
 
@@ -173,7 +267,7 @@ Children record both parent IDs, the current birth tick, and
 ## Genome, inheritance, and mutation
 
 All founders start with an identical immutable genome. There is no initial
-variation option in v0.2. The four traits are:
+variation option. The four traits are unchanged from v0.2:
 
 | Trait | Founder value | Permitted values | Effect |
 | --- | --- | --- | --- |
@@ -203,7 +297,7 @@ of its parental value. Both rate and strength must be in `[0, 1]`. Any positive
 strength allows an integer step of at least
 one when the perception mutation is selected. Setting mutation rate **or**
 strength to zero leaves pure inheritance and consumes no mutation-stream draws.
-There are no chromosomes, dominance rules, learned weights, or inherited brains.
+There are no chromosomes, dominance rules, or inherited learned weights/brains.
 
 ## Renewable resources and population
 
@@ -238,7 +332,7 @@ safeguard is rejected.
 from config import Config
 from simulation.simulation import Simulation
 
-settings = Config.evolution(random_seed=42, max_ticks=1000, mutation_rate=0.05)
+settings = Config.evolution(random_seed=42, max_ticks=1000, brain="learning")
 sim = Simulation(settings)
 for _ in range(settings.max_ticks):
     if sim.population == 0:
@@ -264,6 +358,15 @@ randomness. Each child receives a fresh `brain:<new_id>` stream. There is no use
 of global random state, wall clocks, or Python hash randomization in dynamics.
 Logging and statistics consume no randomness.
 
+LearningBrain uses its private `brain:<id>` stream for exploration and tied
+choices. At construction it derives a separate emission RNG from one 64-bit draw
+of that stream. Changing signal probability or vocabulary therefore cannot shift
+its future action-choice draws. RandomBrain's original RNG consumption is
+untouched. The two controllers consume randomness differently: their individual
+trajectories are expected to differ even under the same seed. Changes in behavior
+can also change later population, resource, and partner draws; separate streams
+do not imply matched outcomes across experimental conditions.
+
 Identical configuration, seed, source code, and Python version reproduce the
 same outcomes. Record all four for experiments; replay across future code or
 Python versions is not promised. Legacy seed 42 was compared against a v0.1
@@ -276,7 +379,16 @@ additional counters; their textual formats intentionally extend v0.1.
 
 The simulation retains only its latest immutable `Statistics` snapshot. CSV
 streams tick zero and each completed tick. Existing ecological columns remain
-integers; appended genome summaries contain numeric values or empty cells:
+integers; genome and learning means contain numeric values or empty cells:
+
+CLI CSV files prefix every row with `mode`, `brain`, `seed`, and `config_id`.
+`<output>.csv.metadata.json` records the full effective Config, Python version,
+release version, and the same ID. The ID is SHA-256 of sorted JSON for the full
+configuration, including runner settings; it is not a source-code hash. Retain
+the code revision alongside results. Programmatic `CSVStatisticsWriter(stream)`
+still emits statistics alone; optional `metadata=...` adds identifying columns
+and cannot overwrite metrics. Existing metric names and meanings are preserved,
+but consumers should read named columns rather than fixed positions.
 
 | Fields | Semantics |
 | --- | --- |
@@ -284,7 +396,7 @@ integers; appended genome summaries contain numeric values or empty cells:
 | `births`, `deaths` | Cumulative counts; founders are not births |
 | `highest_generation` | Highest generation ever born, retained after death/extinction |
 | `reproduction_attempts` | All selected REPRODUCE actions, including failures |
-| `successful_reproductions` | Cumulative successful pairings; equals births in v0.2 |
+| `successful_reproductions` | Cumulative successful pairings; equals births |
 | `population_limit_blocks` | Otherwise viable attempts blocked by the safeguard |
 | `food_consumed`, `water_consumed`, `signals_emitted` | Cumulative actual units/emissions |
 | `food_regenerated`, `water_regenerated` | Cumulative actual additions, excluding initial placement |
@@ -293,6 +405,17 @@ integers; appended genome summaries contain numeric values or empty cells:
 | `mean_signal_probability`, `min_signal_probability`, `max_signal_probability` | Current living agents' random signal probabilities |
 | `mean_hunger_multiplier`, `min_hunger_multiplier`, `max_hunger_multiplier` | Current living agents' hunger multipliers |
 | `mean_thirst_multiplier`, `min_thirst_multiplier`, `max_thirst_multiplier` | Current living agents' thirst multipliers |
+| `learning_agents` | Currently living LearningBrain individuals, including newborns |
+| `total_learning_updates` | Cumulative Q updates, including those by agents that later died |
+| `mean_learning_updates` | Mean lifetime update count among living LearningBrain agents only |
+| `mean_memory_size` | Mean stored state rows among living LearningBrain agents only |
+| `exploratory_actions`, `exploitative_actions` | Cumulative branch counts for LearningBrain decisions, including deceased agents |
+
+Learning means are `None`/empty CSV cells when there are no living learners;
+RandomBrain runs have zero learning counts and empty learning means. Newborns
+contribute zero updates and zero memory rows. An exploitative action can still be
+random among ties; the labels record the epsilon branch, not whether an action
+was objectively useful. Living means require one read-only linear pass.
 
 Subtract adjacent CSV rows for per-tick counts. An accounting assertion checks
 `initial_population + births - deaths == population`. Tests also check unique IDs,
@@ -304,7 +427,7 @@ calculated after deaths are removed and newborns are added, including those
 newborns immediately. Means use `math.fsum` for accurate floating-point summation.
 When no agents remain, all twelve trait values are `None` in Python and empty
 cells in CSV (not zero or NaN). A repeated step after extinction retains that
-empty snapshot. New columns are appended after the original ecological columns.
+empty snapshot. Genome columns remain the final twelve CSV columns.
 
 The summary pass reads only body liveness and immutable genome values. It neither
 draws randomness nor changes bodies, brains, genomes, ordering, or simulation
@@ -319,7 +442,9 @@ streaming JSONL writer. Payloads are built only when logging is enabled:
 - `agent_step`: existing start position, before/after body state, local observation,
   action/success, emissions, consumption, death cause, plus a reproduction failure
   reason when applicable. Partner costs may change a body after its own step
-  record; birth records identify both charged parents.
+  record; birth records identify both charged parents. LearningBrain records also
+  contain `learning.reward`, `exploratory`, cumulative `updates`, and `memory_size`;
+  full learned tables are not serialized in each event.
 - `birth`: emitted after the acting phase, with `agent_id`/`details.child_id`, tick,
   `x`/`y`, both parent IDs, generation, complete `child_genome`, reproductive type,
   and initial needs/energy. Lineage can be reconstructed without retaining dead
@@ -332,36 +457,78 @@ use caller-owned streams and do not retain rows.
 
 ## Baselines, performance, and scientific limitations
 
-Seed 42, default dimensions/population, and 1,000 requested ticks:
+Verification used Python 3.11.9 and the unchanged evolution preset, seed 0,
+100 founders, and no population safeguard or ecology tuning:
 
-| Mode | Final tick | Population | Births | Deaths | Highest generation |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Legacy | 309 (extinct) | 0 | 0 | 100 | 0 |
-| Evolution | 1,000 | 869 | 6,114 | 5,345 | 31 |
+| Brain | Tick | Population | Births | Deaths | Highest generation | Food / water consumed |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Random | 1,000 | 927 | 6,129 | 5,302 | 31 | 23,831 / 23,680 |
+| Learning | 1,000 | 810 | 5,246 | 4,536 | 29 | 24,114 / 23,931 |
+| Learning | 5,000 | 830 | 28,465 | 27,735 | 143 | 119,904 / 120,628 |
 
-The legacy run consumed 361 food and 389 water units and emitted 1,425 signals,
-matching v0.1. Evolution used the preset as defined above, with no safety cap or
-parameter tuning to force survival. These are single-seed smoke tests, not claims
-of ecological stability or guaranteed indefinite survival. Extinction remains a
-valid outcome and is explicitly tested even with reproduction and renewal enabled.
+The RandomBrain run matches the actual pre-v0.3 control (commit `1e53e9e`) at
+every captured tick through 1,000, including bodies/genomes, resources, signals,
+IDs, and original ecological counters, with identical final RNG states:
 
-The two 1,000-tick evolution runs matched every captured tick (bodies/genomes,
-resources, signals, IDs, and statistics), all final RNG states, and CSV bytes.
-The second run enabled an event sink that retained only run metadata and births;
-3,935 newborns had genomes differing from the founder baseline. No events were
-enabled in the first run. The peak population was 1,470. Population, death-cause,
-resource-conservation, and trait-bound checks passed throughout both runs.
+```text
+trajectory SHA-256: ff10294e2141a4684fcabad9bf759048ad045b5862c80a7865e7f1e8d6c86dc0
+final state:       117738e2663e321026d72d23eea63212b61446e187d693355d168d9f92e9d6c8
+final RNG states:  2e8b13531fef4da4ae409dfbe2fb353a663f33b94ae19a07915398e728b219ee
+```
 
-On the local Python 3.11 environment, simulation steps took approximately 12.0
-seconds without events and 13.4 seconds with the birth-filtering sink. Full-state
-hashing and invariant checks increased total validation time to 18.2 and 19.7
-seconds respectively. These are indicative single-machine measurements, not
-portable throughput guarantees. Local artifacts are `data/v02_legacy.csv`,
-`data/v02_evolution_1.csv`, `data/v02_evolution_2.csv`, `data/v02_births.jsonl`, and
-`data/v02_verification.json` (ignored generated files, not required to run).
+The regression test also compares a tick-100 body/world/signal/RNG digest
+generated by running the original code from that Git commit. Output metadata
+and new statistics columns intentionally differ. The retained legacy seed-42
+baseline is extinction at tick 309, with no births, 100 deaths, 361 food units,
+389 water units, and 1,425 signals.
+
+Two separate 1,000-tick LearningBrain verification runs compare every tick,
+including Q tables and their recency order, pending transitions, all bodies and
+genomes, resources, signals, statistics, and all RNG states. One enables a sink
+that writes metadata/birth events plus extra summary/CSV reads. They match each
+other and the CLI CSV metrics; global random state remains unchanged. Population,
+death-cause, unique-ID, learning-update, memory-bound, and resource-conservation
+checks are applied throughout. Full JSONL serialization independence is also
+covered by the automated test suite.
+
+At tick 1,000, learners have made **693,705 updates**, with 139,302 exploratory
+and 555,207 exploitative decisions. Living learners average 96.08 updates and
+48.58 stored states. Peak population is 864, versus 1,484 for the random control.
+At tick 5,000, learning has 3,916,313 cumulative updates and a mean memory size of
+14.54 states. No population safeguard blocks occur.
+
+The controlled `experiments.learning_demo` uses a one-cell world with one naive
+agent, no reproduction, and no age death. Before each of 400 trials the harness
+sets thirst to 60 and the tile's water to one unit; actions and physiology run
+through the ordinary simulation. This intervention supplies repeated comparable
+experience, not an instruction to the brain. All seven initial Q values are
+zero. After training, `drink` is the unique highest-valued action (3.6196 versus
+2.6334–3.0751 for the others), and was chosen 323/400 times. There are 399 updates
+and one stored state. Other actions can have positive values through discounted
+future returns. The changed learned values and greedy preference establish
+learning in this controlled task; they do not establish ecological superiority.
+
+Local CLI wall times, including CSV, were approximately **13.1 s** for random
+1,000 ticks, **17.2 s** for learning 1,000 ticks, and **76.5 s** for learning 5,000
+ticks. The first control shared the machine with verification work, and agent
+counts differ, so these are indicative observations, not a controlled speed
+benchmark or portable throughput guarantees. Full-state hashing, especially all
+per-agent RNG states, adds substantial validation cost outside normal simulation.
+A 200-tick learning profile attributes most cumulative time to local observation
+construction (1.27 s) and action selection (1.22 s, including 0.83 s in the feature
+encoder). These are profiled timings with instrumentation overhead, not normal
+run benchmarks; `data/v03_profile.txt` records the breakdown. No multiprocessing
+or ecological parameter changes were introduced in response.
+Local generated artifacts (ignored by Git) are:
+
+- `data/v03_random_seed_0.csv`, `data/v03_learning_seed_0.csv`, and
+  `data/v03_learning_seed_0_5000.csv`, each with a `.metadata.json` sidecar.
+- `data/v03_verification.json`, `data/v03_runtime.json`,
+  `data/v03_learning_demo.json`, and `data/v03_learning_births.jsonl`.
 
 Memory scales with the world, living population, pending births, and recent
-signals, rather than elapsed ticks. Perception allocates local snapshots, resource
+signals, plus at most 256 state rows per learner by default, rather than elapsed
+ticks. Perception allocates local snapshots, resource
 renewal scans the grid when enabled, and partner lookup searches nearby buckets.
 Very dense local clusters can still make pairing expensive. Detailed serialization
 and large inherited perception radii add cost. No claim of million-tick or
@@ -371,13 +538,30 @@ The ecology is deliberately abstract. All tiles can regenerate, related agents
 can pair, births are immediate, and reproductive types are compatibility bits.
 There is no penalty balancing lower metabolic multipliers, so selection can favor
 the configured lower bounds; this is not a validated biological fitness model.
-RandomBrain ignores observed resources and signals, so perception/signalling
-variation need not improve fitness. Multiple generations and genetic change do
-not demonstrate intelligence, adaptation to every trait, or emergent language.
+RandomBrain ignores observations; LearningBrain uses a coarse, partially observed
+state that can merge quite different situations. Local nearest-resource features
+omit richer spatial structure. Short lives, changing neighbors, sparse repeated
+states, optimistic zero values, exploration, and eviction can impede learning.
+Reward can discourage costly reproduction even when reproduction benefits the
+lineage. The controller has no reproductive-fitness objective or learned knowledge
+transfer between generations.
 
-A sensible v0.3 direction is a reproducible experiment runner with replicated
-seeds, sampled trait distributions, extinction/survival measures, and measured
-performance. Use it to assess ecological sensitivity and explicit trait tradeoffs
-before introducing learning or claiming adaptive communication. Reproduction,
-objects, sensory systems, and controllers remain separate extension points; none
-should directly script agriculture, institutions, or other civilization outcomes.
+The learning run has fewer births and fewer deaths than the control at tick 1,000;
+population alone does not measure learning quality or individual survival benefit.
+Mean perception radius is 2.0992 for random and 2.0148 for learning at tick 1,000.
+By tick 5,000 it is **0.0675** in the learning run, down from founder value 2.
+This does not support a simple claim that larger perception is favored here.
+Fewer distinct sensory states might make value reuse easier, but that is a
+hypothesis requiring controlled experiments, not an established explanation.
+One seed cannot distinguish selection from drift or establish long-term stability.
+Extinction remains legitimate and is tested. Multiple generations and acquired
+behavior do not establish intelligence, culture, or emergent language.
+
+The next experiment should compare RandomBrain and LearningBrain across the same
+replicated seeds and unchanged ecological configurations, reporting survival,
+births/deaths, agent-time exposure, resource use, and trait distributions. Follow
+with explicit frozen-learning and perception ablations to separate learning from
+feature/exploration effects. Keep hyperparameters fixed before interpreting the
+comparison; do not tune the ecology until a controller wins. Signal-learning
+mechanisms remain future work, and no extension should directly script farming,
+institutions, or other civilization outcomes.

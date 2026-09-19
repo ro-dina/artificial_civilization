@@ -1,8 +1,10 @@
 import csv
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass, fields
 from math import fsum
 from typing import TYPE_CHECKING, TextIO
+
+from agents.learning import LearningBrain
 
 if TYPE_CHECKING:
     from agents.human import Human
@@ -27,12 +29,29 @@ def summarize_genomes(agents: Iterable["Human"]) -> dict[str, float | int | None
     return summary
 
 
+def summarize_learning(agents: Iterable["Human"]) -> dict[str, float | int | None]:
+    count = updates = size = 0
+    for human in agents:
+        if human.alive and isinstance(human.brain, LearningBrain):
+            count += 1
+            updates += human.brain.learning_updates
+            size += human.brain.memory_size
+    return {"learning_agents": count, "mean_learning_updates": updates / count if count else None,
+            "mean_memory_size": size / count if count else None}
+
+
 @dataclass(frozen=True, slots=True)
 class Statistics:
     """Population/traits are current; generation is historical and counters cumulative."""
 
     tick: int
     population: int
+    learning_agents: int = 0
+    total_learning_updates: int = 0
+    mean_learning_updates: float | None = None
+    mean_memory_size: float | None = None
+    exploratory_actions: int = 0
+    exploitative_actions: int = 0
     deaths: int = 0
     food_consumed: int = 0
     water_consumed: int = 0
@@ -65,9 +84,13 @@ class Statistics:
 class CSVStatisticsWriter:
     """Stream snapshots to a caller-owned text file without retaining history."""
 
-    def __init__(self, stream: TextIO) -> None:
-        self._writer = csv.DictWriter(stream, fieldnames=[field.name for field in fields(Statistics)])
+    def __init__(self, stream: TextIO, *, metadata: Mapping[str, str | int] | None = None) -> None:
+        self._metadata = dict(metadata or {})
+        names = [field.name for field in fields(Statistics)]
+        if self._metadata.keys() & set(names):
+            raise ValueError("CSV metadata must not overwrite statistics columns")
+        self._writer = csv.DictWriter(stream, fieldnames=[*self._metadata, *names])
         self._writer.writeheader()
 
     def write(self, statistics: Statistics) -> None:
-        self._writer.writerow(asdict(statistics))
+        self._writer.writerow({**self._metadata, **asdict(statistics)})
