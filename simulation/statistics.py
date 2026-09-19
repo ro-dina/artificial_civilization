@@ -1,11 +1,35 @@
 import csv
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, fields
-from typing import TextIO
+from math import fsum
+from typing import TYPE_CHECKING, TextIO
+
+if TYPE_CHECKING:
+    from agents.human import Human
+
+GENOME_TRAITS = (
+    "perception_radius", "signal_probability", "hunger_multiplier", "thirst_multiplier",
+)
+
+
+def summarize_genomes(agents: Iterable["Human"]) -> dict[str, float | int | None]:
+    """Read living genomes only; empty populations have no mean or extrema."""
+    values = {trait: [] for trait in GENOME_TRAITS}
+    for human in agents:
+        if human.alive:
+            for trait in GENOME_TRAITS:
+                values[trait].append(getattr(human.genome, trait))
+    summary = {}
+    for trait, samples in values.items():
+        summary[f"mean_{trait}"] = fsum(samples) / len(samples) if samples else None
+        summary[f"min_{trait}"] = min(samples) if samples else None
+        summary[f"max_{trait}"] = max(samples) if samples else None
+    return summary
 
 
 @dataclass(frozen=True, slots=True)
 class Statistics:
-    """Population is current, highest_generation is historical, and all counters are cumulative."""
+    """Population/traits are current; generation is historical and counters cumulative."""
 
     tick: int
     population: int
@@ -24,6 +48,18 @@ class Statistics:
     dehydration_deaths: int = 0
     old_age_deaths: int = 0
     energy_deaths: int = 0
+    mean_perception_radius: float | None = None
+    mean_signal_probability: float | None = None
+    mean_hunger_multiplier: float | None = None
+    mean_thirst_multiplier: float | None = None
+    min_perception_radius: int | None = None
+    max_perception_radius: int | None = None
+    min_signal_probability: float | None = None
+    max_signal_probability: float | None = None
+    min_hunger_multiplier: float | None = None
+    max_hunger_multiplier: float | None = None
+    min_thirst_multiplier: float | None = None
+    max_thirst_multiplier: float | None = None
 
 
 class CSVStatisticsWriter:

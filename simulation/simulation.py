@@ -10,7 +10,7 @@ from agents.human import Human
 from agents.observation import Observation, TileObservation
 from config import Config, REPRODUCTIVE_TYPES
 from simulation.events import Event, EventSink
-from simulation.statistics import Statistics
+from simulation.statistics import Statistics, summarize_genomes
 from systems.communication import Communication
 from systems.reproduction import Reproduction
 from world.world import World
@@ -56,7 +56,7 @@ class Simulation:
         self._next_id = config.initial_population
         self.communication = Communication(config.signal_vocab_size, config.signal_range)
         self.tick = 0
-        self.statistics = Statistics(tick=0, population=self.population)
+        self.statistics = Statistics(tick=0, population=self.population, **summarize_genomes(self.agents))
         if self.event_sink is not None:
             self.event_sink(Event(0, "run_started", details={"config": asdict(config), "founder_genome": founder_genome}))
 
@@ -218,6 +218,7 @@ class Simulation:
             dehydration_deaths=previous.dehydration_deaths + death_causes["dehydration"],
             old_age_deaths=previous.old_age_deaths + death_causes["old_age"],
             energy_deaths=previous.energy_deaths + death_causes["energy"],
+            **summarize_genomes(self.agents),
         )
         assert self.population == self.config.initial_population + self.statistics.births - self.statistics.deaths
         return self.statistics

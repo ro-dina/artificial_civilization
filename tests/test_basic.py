@@ -290,7 +290,8 @@ class SimulationTests(unittest.TestCase):
         writer.write(sim.step())
         rows = list(csv.DictReader(io.StringIO(csv_stream.getvalue())))
         self.assertEqual(len(rows), 2)
-        self.assertEqual({name: int(value) for name, value in rows[-1].items()}, asdict(sim.statistics))
+        self.assertEqual(rows[-1], {name: "" if value is None else str(value)
+                                  for name, value in asdict(sim.statistics).items()})
         events = [json.loads(line) for line in event_stream.getvalue().splitlines()]
         self.assertEqual(events[0]["details"]["config"]["random_seed"], config.random_seed)
         self.assertEqual(len(events), 3)

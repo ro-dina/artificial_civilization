@@ -36,7 +36,8 @@ tick limit. Output destinations are overwritten only when explicitly supplied;
 CSV and events must use different paths. Generated files under `data/` are ignored
 by Git. No GUI, rendering, multiprocessing, or automatic detailed history exists.
 
-The 23 original tests are unchanged. Additional tests cover pairing, eligibility,
+The original 23 behavioral tests remain; the CSV round-trip assertion now accepts
+nullable and fractional trait columns. Additional tests cover pairing, eligibility,
 costs, cooldown, deferred births, fresh brains, lineage, mutation, capped resources,
 safeguards, death causes, full evolutionary replay, and logging independence.
 
@@ -56,8 +57,9 @@ systems/reproduction.py    Eligibility, local partner lookup, costs, cooldown
 simulation/simulation.py   Seeded setup, tick loop, births, aggregate accounting
 simulation/statistics.py   Latest aggregate snapshot and streaming CSV writer
 simulation/events.py       Optional generic event sink and JSONL writer
-tests/test_basic.py         Original v0.1 tests (unchanged)
+tests/test_basic.py         Original v0.1 tests, with extended CSV schema support
 tests/test_evolution.py     v0.2 tests
+tests/test_statistics.py    Living-genome summaries and observation-only verification
 ```
 
 The existing architecture is extended rather than replaced. A brain implements
@@ -273,7 +275,8 @@ additional counters; their textual formats intentionally extend v0.1.
 ## Statistics and events
 
 The simulation retains only its latest immutable `Statistics` snapshot. CSV
-streams tick zero and each completed tick. All columns remain scalar integers:
+streams tick zero and each completed tick. Existing ecological columns remain
+integers; appended genome summaries contain numeric values or empty cells:
 
 | Fields | Semantics |
 | --- | --- |
@@ -286,12 +289,28 @@ streams tick zero and each completed tick. All columns remain scalar integers:
 | `food_consumed`, `water_consumed`, `signals_emitted` | Cumulative actual units/emissions |
 | `food_regenerated`, `water_regenerated` | Cumulative actual additions, excluding initial placement |
 | `starvation_deaths`, `dehydration_deaths`, `old_age_deaths`, `energy_deaths` | Cumulative deaths by the priority-selected cause |
+| `mean_perception_radius`, `min_perception_radius`, `max_perception_radius` | Current living agents' perception radii |
+| `mean_signal_probability`, `min_signal_probability`, `max_signal_probability` | Current living agents' random signal probabilities |
+| `mean_hunger_multiplier`, `min_hunger_multiplier`, `max_hunger_multiplier` | Current living agents' hunger multipliers |
+| `mean_thirst_multiplier`, `min_thirst_multiplier`, `max_thirst_multiplier` | Current living agents' thirst multipliers |
 
 Subtract adjacent CSV rows for per-tick counts. An accounting assertion checks
 `initial_population + births - deaths == population`. Tests also check unique IDs,
-nonnegative energy/resources, bounds, and resource conservation. Mean trait values
-are not computed every tick; experiments can sample living `human.genome` values
-without adding a permanent population-wide analysis pass to the loop.
+nonnegative energy/resources, bounds, and resource conservation.
+
+Genome summaries are population-weighted snapshots, not cumulative measures:
+every living agent counts once. Tick zero includes founders; later snapshots are
+calculated after deaths are removed and newborns are added, including those
+newborns immediately. Means use `math.fsum` for accurate floating-point summation.
+When no agents remain, all twelve trait values are `None` in Python and empty
+cells in CSV (not zero or NaN). A repeated step after extinction retains that
+empty snapshot. New columns are appended after the original ecological columns.
+
+The summary pass reads only body liveness and immutable genome values. It neither
+draws randomness nor changes bodies, brains, genomes, ordering, or simulation
+rules. It takes linear time and temporary storage in living population size for
+four traits; no historical genomes or samples are retained. Writing a snapshot
+to CSV does not recompute it or affect the simulation.
 
 An optional callable `event_sink` receives records; `--events` uses the existing
 streaming JSONL writer. Payloads are built only when logging is enabled:
