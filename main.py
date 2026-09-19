@@ -13,7 +13,8 @@ from simulation.statistics import CSVStatisticsWriter
 
 def main() -> None:
     defaults = Config()
-    parser = argparse.ArgumentParser(description="Artificial Civilization v0.1: headless artificial life")
+    parser = argparse.ArgumentParser(description="Artificial Civilization v0.2: headless artificial life")
+    parser.add_argument("--mode", choices=("legacy", "evolution"), default="legacy")
     parser.add_argument("--seed", type=int, default=defaults.random_seed)
     parser.add_argument("--ticks", type=int, default=defaults.max_ticks, help="maximum ticks to run")
     parser.add_argument("--population", type=int, default=defaults.initial_population)
@@ -22,6 +23,8 @@ def main() -> None:
     parser.add_argument("--events", type=Path, help="opt-in detailed JSONL (overwrites destination)")
     args = parser.parse_args()
     try:
+        if args.mode == "evolution":
+            defaults = Config.evolution()
         config = replace(defaults, random_seed=args.seed, max_ticks=args.ticks,
                          initial_population=args.population, status_interval=args.status_every)
     except ValueError as error:
@@ -41,7 +44,7 @@ def main() -> None:
         sim = Simulation(config, event_sink=event_sink)
         if csv_writer is not None:
             csv_writer.write(sim.statistics)
-        print(f"seed={config.random_seed}")
+        print(f"mode={args.mode} seed={config.random_seed}")
         last_status_tick = None
         for _ in range(config.max_ticks):
             if sim.population == 0:

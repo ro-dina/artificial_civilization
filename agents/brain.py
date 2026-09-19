@@ -20,6 +20,7 @@ class Action(str, Enum):
     EAT = "eat"
     DRINK = "drink"
     WAIT = "wait"
+    REPRODUCE = "reproduce"
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,12 +41,11 @@ class RandomBrain:
     def __init__(self, rng: Random, config: Config) -> None:
         self.rng = rng
         self.vocab_size = config.signal_vocab_size
-        self.signal_probability = config.signal_probability
-        self.actions = tuple(Action)
+        self.actions = tuple(a for a in Action if config.reproduction_enabled or a is not Action.REPRODUCE)
 
     def choose_action(self, human: Human, observation: Observation) -> Decision:
         action = self.rng.choice(self.actions)
         signal = None
-        if self.rng.random() < self.signal_probability:
+        if self.rng.random() < human.genome.signal_probability:
             signal = self.rng.randrange(self.vocab_size)
         return Decision(action, signal)

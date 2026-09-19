@@ -24,10 +24,38 @@ class World:
         world = cls(config.world_width, config.world_height)
         # Placement with replacement preserves exact totals, even on small grids.
         for resource, count in (("food", config.initial_food), ("water", config.initial_water)):
+            capacity = getattr(config, f"{resource}_capacity")
+            if capacity is not None:
+                # Uniform among non-full cells; swap removal avoids rejection loops.
+                available = [tile for row in world.tiles for tile in row]
+                for _ in range(count):
+                    index = rng.randrange(len(available))
+                    tile = available[index]
+                    setattr(tile, resource, getattr(tile, resource) + 1)
+                    if getattr(tile, resource) == capacity:
+                        available[index] = available[-1]
+                        available.pop()
+                continue
             for _ in range(count):
                 tile = world.tile_at(rng.randrange(world.width), rng.randrange(world.height))
                 setattr(tile, resource, getattr(tile, resource) + 1)
         return world
+
+    def regenerate(self, config: Config, food_rng: Random, water_rng: Random) -> tuple[int, int]:
+        """At tick start, each non-full tile may gain one unit of each resource."""
+        totals = []
+        for resource, rng in (("food", food_rng), ("water", water_rng)):
+            probability = getattr(config, f"{resource}_regeneration_probability")
+            capacity = getattr(config, f"{resource}_capacity")
+            gained = 0
+            if probability > 0:
+                for row in self.tiles:
+                    for tile in row:
+                        if getattr(tile, resource) < capacity and rng.random() < probability:
+                            setattr(tile, resource, getattr(tile, resource) + 1)
+                            gained += 1
+            totals.append(gained)
+        return totals[0], totals[1]
 
     def is_valid(self, x: int, y: int) -> bool:
         return 0 <= x < self.width and 0 <= y < self.height
