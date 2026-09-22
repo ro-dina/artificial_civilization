@@ -19,6 +19,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Artificial Civilization v0.3: headless artificial life")
     parser.add_argument("--mode", choices=("legacy", "evolution"), default="legacy")
     parser.add_argument("--brain", choices=("random", "learning"), default=defaults.brain)
+    parser.add_argument("--fixed-perception-radius", type=int, default=defaults.fixed_perception_radius,
+                        help="fix the genome's perception radius for founders and all descendants")
     parser.add_argument("--seed", type=int, default=defaults.random_seed)
     parser.add_argument("--ticks", type=int, default=defaults.max_ticks, help="maximum ticks to run")
     parser.add_argument("--population", type=int, default=defaults.initial_population)
@@ -30,7 +32,8 @@ def main() -> None:
         if args.mode == "evolution":
             defaults = Config.evolution()
         config = replace(defaults, random_seed=args.seed, max_ticks=args.ticks,
-                         initial_population=args.population, status_interval=args.status_every, brain=args.brain)
+                         initial_population=args.population, status_interval=args.status_every, brain=args.brain,
+                         fixed_perception_radius=args.fixed_perception_radius)
     except ValueError as error:
         parser.error(str(error))
     metadata_path = args.csv.with_suffix(args.csv.suffix + ".metadata.json") if args.csv else None
@@ -55,7 +58,9 @@ def main() -> None:
         sim = Simulation(config, event_sink=event_sink)
         if csv_writer is not None:
             csv_writer.write(sim.statistics)
-        print(f"mode={args.mode} brain={config.brain} seed={config.random_seed}")
+        fixed_label = (f" fixed_perception_radius={config.fixed_perception_radius}"
+                       if config.fixed_perception_radius is not None else "")
+        print(f"mode={args.mode} brain={config.brain} seed={config.random_seed}{fixed_label}")
         last_status_tick = None
         for _ in range(config.max_ticks):
             if sim.population == 0:

@@ -25,7 +25,8 @@ class Genome:
 
     @classmethod
     def founder(cls, config: Config) -> "Genome":
-        return cls(perception_radius=config.perception_radius, signal_probability=config.signal_probability)
+        radius = config.perception_radius if config.fixed_perception_radius is None else config.fixed_perception_radius
+        return cls(perception_radius=radius, signal_probability=config.signal_probability)
 
     @classmethod
     def inherit(cls, a: "Genome", b: "Genome", config: Config,
@@ -43,4 +44,8 @@ class Genome:
                     value += mutation_rng.uniform(-extent, extent)
                 value = max(low, min(high, value))
             values[name] = value
+        if config.fixed_perception_radius is not None:
+            # Preserve the ordinary draws so fixing perception does not shift
+            # inheritance/mutation randomness for the other traits.
+            values["perception_radius"] = config.fixed_perception_radius
         return cls(**values)

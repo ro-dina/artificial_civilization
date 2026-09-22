@@ -9,6 +9,7 @@ INITIAL_POPULATION = 100
 INITIAL_FOOD = 600
 INITIAL_WATER = 600
 PERCEPTION_RADIUS = 2
+FIXED_PERCEPTION_RADIUS = None
 MAX_HUNGER = 100
 MAX_THIRST = 80
 MAX_AGE = 1000
@@ -114,6 +115,7 @@ class Config:
     learning_epsilon: float = LEARNING_EPSILON
     learning_memory_capacity: int = LEARNING_MEMORY_CAPACITY
     learning_need_bins: int = LEARNING_NEED_BINS
+    fixed_perception_radius: int | None = FIXED_PERCEPTION_RADIUS
 
     @classmethod
     def evolution(cls, **overrides) -> "Config":
@@ -133,7 +135,7 @@ class Config:
             "signal_range", "random_seed", "max_ticks", "status_interval",
             "min_reproductive_age", "max_reproductive_age", "reproduction_radius",
             "reproduction_cooldown", "food_capacity", "water_capacity", "max_population",
-            "learning_memory_capacity", "learning_need_bins",
+            "learning_memory_capacity", "learning_need_bins", "fixed_perception_radius",
         }
         positive_fields = {
             "world_width", "world_height", "max_hunger", "max_thirst",
@@ -141,7 +143,8 @@ class Config:
             "reproduction_energy_cost", "max_energy", "food_capacity", "water_capacity",
             "learning_rate", "learning_epsilon", "learning_memory_capacity", "learning_need_bins",
         }
-        optional_fields = {"max_age", "max_reproductive_age", "food_capacity", "water_capacity", "max_population"}
+        optional_fields = {"max_age", "max_reproductive_age", "food_capacity", "water_capacity", "max_population",
+                           "fixed_perception_radius"}
         boolean_fields = {"reproduction_enabled", "energy_depletion_lethal"}
         for field in fields(self):
             name, value = field.name, getattr(self, field.name)
@@ -171,6 +174,10 @@ class Config:
                 raise ValueError(f"{name} must be between 0 and 1")
         if self.perception_radius > GENOME_BOUNDS["perception_radius"][1]:
             raise ValueError("perception_radius exceeds the genome limit in GENOME_BOUNDS")
+        if self.fixed_perception_radius is not None:
+            low, high = GENOME_BOUNDS["perception_radius"]
+            if not low <= self.fixed_perception_radius <= high:
+                raise ValueError(f"fixed_perception_radius must be in [{low}, {high}]")
         if self.max_reproductive_age is not None and self.max_reproductive_age < self.min_reproductive_age:
             raise ValueError("max_reproductive_age must be at least min_reproductive_age")
         for name in ("initial_energy", "offspring_energy"):

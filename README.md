@@ -16,8 +16,9 @@ remain research questions; there are no scripted civilization stages or outcomes
 
 ## Run and test
 
-Use Python **3.11+** from the repository root. No installation or network access is
-required. The existing `.venv/bin/python` can replace `python3` in these commands.
+Use Python **3.11+** from the repository root. The simulation needs no installation
+or network access. CSV analysis has separate optional dependencies, described
+below. The existing `.venv/bin/python` can replace `python3` in these commands.
 
 ```bash
 # Legacy defaults preserve v0.1 dynamics, including unchanged energy.
@@ -30,6 +31,9 @@ python3 main.py --mode evolution --seed 42 --ticks 1000 --csv data/evolution.csv
 python3 main.py --mode evolution --brain random --seed 0 --ticks 1000 --csv data/v03_random_seed_0.csv
 python3 main.py --mode evolution --brain learning --seed 0 --ticks 1000 --csv data/v03_learning_seed_0.csv
 python3 main.py --mode evolution --brain learning --seed 0 --ticks 5000 --csv data/v03_learning_seed_0_5000.csv
+
+# Hold perception fixed in every generation while the other traits evolve.
+python3 main.py --mode evolution --brain learning --fixed-perception-radius 2 --seed 0 --ticks 5000 --csv data/learning_fixed_p2_seed_0.csv
 
 # Controlled repeated experience, independent of evolutionary claims.
 python3 -m experiments.learning_demo
@@ -53,6 +57,8 @@ Q updates and reward, real observation timing, bounded independent memory,
 fresh offspring, local sensing, exploration, signal isolation, complete replay,
 logging/statistics independence, accounting, extinction, CSV metadata, a stored
 pre-v0.3 control fixture, and a controlled demonstration of learned preference.
+The fixed-perception extension adds eight tests for a total of 105 simulation tests, including
+multi-generation constraints, unchanged other-trait RNG draws, and CLI validation.
 
 ## Architecture
 
@@ -75,8 +81,12 @@ tests/test_basic.py         Original v0.1 tests, with extended CSV schema suppor
 tests/test_evolution.py     v0.2 tests
 tests/test_statistics.py    Living-genome summaries and observation-only verification
 tests/test_learning.py      v0.3 learning, isolation, replay, and control regression
+tests/test_fixed_perception.py Fixed-radius experiments, inheritance, and CLI validation
 tests/fixtures/             Pre-v0.3 deterministic control digest
 experiments/learning_demo.py Controlled repeated-resource learning validation
+experiments/analyze_fixed_perception.py Offline CSV aggregation and PNG plots
+tests/test_analyze_fixed_perception.py Analysis fixtures, missing data, and reproducibility
+requirements-analysis.txt   Optional pandas/matplotlib dependencies
 ```
 
 The existing architecture is extended rather than replaced. A brain implements
@@ -298,6 +308,96 @@ strength allows an integer step of at least
 one when the perception mutation is selected. Setting mutation rate **or**
 strength to zero leaves pure inheritance and consumes no mutation-stream draws.
 There are no chromosomes, dominance rules, or inherited learned weights/brains.
+
+### Fixed-perception experiments
+
+`--fixed-perception-radius N` sets the **actual genome trait** to `N` for every
+founder and every newborn, in all generations. Valid values are integers **0–8**;
+zero means only the current tile. The option works with either brain and either
+ecological preset. Programmatically, use
+`Config.evolution(brain="learning", fixed_perception_radius=2)`.
+
+The default is `None` (CLI option omitted): perception retains its existing
+inheritance/mutation behavior, with unchanged seeded simulation trajectories.
+`Config.perception_radius` alone sets the founder baseline; the new fixed option
+overrides that baseline and constrains all offspring too. Other genome traits
+continue to inherit and mutate normally; learning, reproduction, physiology,
+resource dynamics, and signal rules are unchanged.
+
+For each birth, the normal inheritance and mutation draws are still performed,
+then the child's stored perception radius is replaced by the fixed value. This
+preserves RNG consumption for the other traits instead of shifting their draws
+by skipping a trait. Fixed and evolving experiments can still diverge as changed
+perception changes learning, behavior, births, and deaths.
+
+CSV `mean_perception_radius`, `min_perception_radius`, and
+`max_perception_radius` all equal `N` while the population is nonempty; extinction
+still produces empty cells. Birth events record the fixed child trait. The CSV's
+`.metadata.json` sidecar includes `config.fixed_perception_radius`, and `config_id`
+distinguishes these experimental settings. Adding this config field changes
+configuration IDs even for the default `None`; it does not change default dynamics.
+
+The example above was verified through tick 5,000: population 899, 29,812 births,
+29,013 deaths, and highest generation 146. All 5,001 CSV snapshots (including tick
+zero) have perception mean/min/max equal to 2, while the other three traits vary.
+This single-seed check validates the constraint, not its ecological superiority.
+
+### Analyze fixed-perception CSVs
+
+This is offline post-processing only: it reads existing CSVs without importing or
+running simulation code, changing Config/RNG, or modifying the input files.
+Install pandas and matplotlib separately; seaborn is not used:
+
+```bash
+python3 -m venv .venv  # Only needed if a virtual environment does not exist yet.
+source .venv/bin/activate
+python3 -m pip install -r requirements-analysis.txt
+python3 -m experiments.analyze_fixed_perception
+
+# Direct invocation and custom locations also work:
+python3 experiments/analyze_fixed_perception.py --data-dir data --output-dir analysis/fixed_perception
+python3 -m unittest discover -s tests -v
+```
+
+Inputs are `data/learning_fixed_p*_seed_*.csv`. Radius and seed come from the
+filename; new radii and seed numbers need no code changes. Runs are sorted
+numerically and each condition's seed count/list is printed. Duplicate run IDs
+or duplicate ticks are errors. The three required metric columns are exactly
+`population`, `mean_memory_size`, and `mean_learning_updates`, plus `tick`.
+Missing optional final metrics produce warnings and unavailable values (`n=0`
+if absent from every run); invalid numeric measurements warn and become NaN.
+
+Results in `analysis/fixed_perception/` are overwritten on each execution:
+
+- `population_over_time.png`, `memory_size_over_time.png`, and
+  `learning_updates_over_time.png`: seed means with ±1 sample SD bands.
+- `final_population.png`: each seed's final value and mean ±1 SD, with deterministic
+  horizontal offsets. `death_causes_final.png` compares three selected cumulative
+  death causes; `traits_over_time.png` shows three evolving traits in separate panels.
+- `final_metrics.csv`: tidy `perception,metric,mean,std,min,max,n` from each run's
+  **maximum recorded tick**. NaNs in that final row are preserved.
+- `run_summary.csv`: one row per run, including filename, seed, final tick,
+  population, counters, and available living-population means.
+- `time_series_metrics.csv`: `perception,tick,metric,mean,std,min,max,n` for all
+  six plotted time-series metrics. `analysis_metadata.json` records input hashes,
+  software versions, and aggregation/missing-data rules.
+
+Every run has equal weight, including when its population differs. SD uses
+`ddof=1`; `n` counts nonmissing values **per metric**, not agents. Missing ticks
+are neither interpolated nor carried forward, even after extinction: later
+averages may therefore represent fewer runs. Inspect `n` when grids differ.
+Population zero remains a valid observation; living-genome and living-learner
+means are undefined at extinction and excluded. Empty CSV cells represent NaN;
+`n<2` gives undefined SD and no SD band/error bar. Different final ticks warn
+because endpoints then cover different durations.
+
+Plots use a headless backend, 180 dpi, and no random jitter. Identical inputs and
+software environment reproduce identical CSV/PNG bytes. The optional analysis
+tests cover synthetic unequal tick grids, NaNs/extinction, sample SD, file order,
+both entrypoints, and reproducible output; they skip if dependencies are absent.
+Memory size measures currently retained Q-table states in living learners, not
+all distinct states ever experienced. The script performs no significance tests
+and does not label any perception radius optimal.
 
 ## Renewable resources and population
 
