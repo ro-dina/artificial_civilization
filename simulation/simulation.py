@@ -10,6 +10,7 @@ from agents.human import Human
 from agents.learning import LearningBrain, Physiology
 from agents.observation import Observation, TileObservation
 from config import Config, REPRODUCTIVE_TYPES
+from simulation.cohorts import CohortSink, PerceptionCohorts
 from simulation.events import Event, EventSink
 from simulation.statistics import Statistics, summarize_genomes, summarize_learning
 from systems.communication import Communication
@@ -26,9 +27,13 @@ MOVEMENT = {
 
 class Simulation:
     def __init__(self, config: Config, *, event_sink: EventSink | None = None,
+                 cohort_sink: CohortSink | None = None, lineage_sink: EventSink | None = None,
                  brain_factory: Callable[[Random, Config], Brain] | None = None) -> None:
         self.config = config
         self.event_sink = event_sink
+        self.cohort_sink = cohort_sink
+        self.lineage_sink = lineage_sink
+        self.cohorts = PerceptionCohorts() if cohort_sink is not None else None
         if brain_factory is None:
             brain_factory = LearningBrain if config.brain == "learning" else RandomBrain
         self.brain_factory = brain_factory
@@ -61,19 +66,30 @@ class Simulation:
         self.tick = 0
         self.statistics = Statistics(tick=0, population=self.population,
                                      **summarize_genomes(self.agents), **summarize_learning(self.agents))
-        if self.event_sink is not None:
-            self.event_sink(Event(0, "run_started", details={"config": asdict(config), "founder_genome": founder_genome}))
+        if self.event_sink is not None or self.lineage_sink is not None:
+            started = Event(0, "run_started", details={"config": asdict(config), "founder_genome": founder_genome})
+            if self.event_sink is not None:
+                self.event_sink(started)
+            if self.lineage_sink is not None:
+                self.lineage_sink(started)
+                for human in self.agents:
+                    self.lineage_sink(Event(0, "founder", agent_id=human.id, x=human.x, y=human.y,
+                                            details={"generation": 0, "birth_tick": 0, "genome": human.genome}))
+        if self.cohorts is not None:
+            self.cohort_sink(self.cohorts.snapshot(0, self.agents))
 
     @classmethod
     def create_default(
         cls, seed: int | None = None, *, config: Config | None = None,
         event_sink: EventSink | None = None,
+        cohort_sink: CohortSink | None = None, lineage_sink: EventSink | None = None,
         brain_factory: Callable[[Random, Config], Brain] | None = None,
     ) -> Simulation:
         settings = config if config is not None else Config()
         if seed is not None:
             settings = replace(settings, random_seed=seed)
-        return cls(settings, event_sink=event_sink, brain_factory=brain_factory)
+        return cls(settings, event_sink=event_sink, cohort_sink=cohort_sink,
+                   lineage_sink=lineage_sink, brain_factory=brain_factory)
 
     @property
     def population(self) -> int:
@@ -125,6 +141,8 @@ class Simulation:
         if not self.agents:
             return self.statistics
         self.tick += 1
+        if self.cohorts is not None:
+            self.cohorts.begin_tick()
         food_regenerated, water_regenerated = self.world.regenerate(self.config, self._food_rng, self._water_rng)
         order = list(self.agents)
         self._order_rng.shuffle(order)
@@ -149,6 +167,8 @@ class Simulation:
                 raise ValueError("Brains must return a Decision containing an Action")
             if decision.signal_id is not None:
                 self.communication.validate_signal(decision.signal_id)
+            if self.cohorts is not None:
+                self.cohorts.action(human, decision.action)
 
             reproduction_failure = None
             if decision.action is Action.REPRODUCE:
@@ -165,6 +185,10 @@ class Simulation:
                     newborns.append(self._offspring(human, partner))
                     self.reproduction.charge(human, partner, self.tick)
                     success = True
+                    if self.cohorts is not None:
+                        self.cohorts.birth(human, partner, newborns[-1])
+                if not success and self.cohorts is not None:
+                    self.cohorts.failure(human)
             else:
                 success, food, water = self._execute(human, decision.action)
             food_consumed += food
@@ -176,6 +200,12 @@ class Simulation:
             deaths += int(cause is not None)
             if cause is not None:
                 death_causes[cause] += 1
+                if self.cohorts is not None:
+                    self.cohorts.death(human, cause)
+                if self.lineage_sink is not None:
+                    self.lineage_sink(Event(self.tick, "death", agent_id=human.id, x=human.x, y=human.y,
+                                            details={"death_cause": cause, "genome_at_death": human.genome,
+                                                     "birth_tick": human.birth_tick, "generation": human.generation}))
             observe_outcome = getattr(human.brain, "observe_outcome", None)
             if observe_outcome is not None:
                 observe_outcome(Physiology.capture(human))
@@ -208,15 +238,19 @@ class Simulation:
         self.agents = [human for human in self.agents if human.alive]
         self.agents.extend(newborns)
         self.reproduction.clear()
-        if self.event_sink is not None:
+        if self.event_sink is not None or self.lineage_sink is not None:
             for child in newborns:
-                self.event_sink(Event(
+                birth = Event(
                     tick=self.tick, kind="birth", agent_id=child.id, x=child.x, y=child.y,
                     details={"child_id": child.id, "parent_a_id": child.parent_a_id,
                              "parent_b_id": child.parent_b_id, "generation": child.generation,
                              "child_genome": child.genome, "reproductive_type": child.reproductive_type,
                              "hunger": child.hunger, "thirst": child.thirst, "energy": child.energy},
-                ))
+                )
+                if self.event_sink is not None:
+                    self.event_sink(birth)
+                if self.lineage_sink is not None:
+                    self.lineage_sink(birth)
         self.communication.advance()
         previous = self.statistics
         self.statistics = Statistics(
@@ -243,6 +277,8 @@ class Simulation:
             **summarize_learning(self.agents),
         )
         assert self.population == self.config.initial_population + self.statistics.births - self.statistics.deaths
+        if self.cohorts is not None:
+            self.cohort_sink(self.cohorts.snapshot(self.tick, self.agents))
         return self.statistics
 
     def print_status(self) -> None:

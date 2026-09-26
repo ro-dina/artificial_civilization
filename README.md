@@ -399,6 +399,244 @@ Memory size measures currently retained Q-table states in living learners, not
 all distinct states ever experienced. The script performs no significance tests
 and does not label any perception radius optimal.
 
+### Free-evolution observations and cohort analysis
+
+The replicated LearningBrain runs and fixed p0/p1/p2/p4 experiments are complete.
+The next question is why freely inherited perception tends toward zero even
+though fixed p1/p2 populations were larger than fixed p0 populations. A **fixed
+condition's population is an ecological outcome**; reproductive participation
+and death rates **within a mixed population** measure different quantities.
+Neither establishes the cause of trait change on its own.
+
+All additions here are observational. Config, aggregate CSV columns, brains,
+learning/Q-table recency, inheritance/mutation, partner selection, update order,
+signals, resources, and named RNG draws are unchanged. Simulation remains
+standard-library-only. Optional offline analyses use the same pandas/matplotlib
+dependencies as fixed-perception analysis, without seaborn or random jitter.
+
+Analyze the **existing** ten runs first (no simulation execution):
+
+```bash
+python3 -m experiments.analyze_evolving_perception
+# Defaults: data/v03_learning_seed_*_5000.csv → analysis/evolving_perception/
+# New instrumentation runs instead:
+python3 -m experiments.analyze_evolving_perception --pattern 'evolving_seed_[0-9].csv'
+```
+
+The second pattern selects seeds 0–9 without also matching cohort files. For
+larger seed sets, put aggregate CSVs in a separate directory and use a broad
+`--pattern 'evolving_seed_*.csv'`. Multiple files for one seed are rejected rather than mixed.
+All three new analyzers accept `--data-dir`, `--output-dir`, and `--pattern`, and
+also support direct invocation as `python3 experiments/<script>.py`.
+
+Required aggregate columns are `tick`, `population`, `mean_perception_radius`.
+Optional columns are min/max perception, mean hunger/thirst/signal, mean memory
+size/learning updates, births/deaths, all four death causes, highest generation.
+Missing optional columns warn and have `n=0`; required columns must exist.
+The actual filenames are preserved. Recorded brain/config metadata, if present,
+rejects RandomBrain or fixed-perception inputs. Each run has equal weight;
+sample SD uses `ddof=1`, missing ticks are not filled, and extinct living means
+are NaN. Final metrics use each seed's own last recorded row (warn if horizons
+differ). No earlier value replaces a NaN in that row.
+
+Outputs in `analysis/evolving_perception/`:
+
+- `perception_over_time.png`, `population_over_time.png`, `learning_over_time.png`,
+  `traits_over_time.png`: seed means ±1 sample SD.
+- `perception_by_seed.png`: separate panels to inspect differences in timing.
+- `perception_population_relationship.png`: matching-tick seed means colored by
+  tick, a descriptive association only.
+- `evolving_time_series.csv`, `evolving_final_metrics.csv`: tidy mean/std/min/max/n.
+- `evolving_run_summary.csv`: maximum-tick row per seed.
+- `analysis_metadata.json`: input hashes, versions, and aggregation rules.
+
+#### Record cohorts and compact lineages
+
+```bash
+python3 main.py --mode evolution --brain learning --seed 0 --ticks 5000 \
+  --csv data/evolving_seed_0.csv \
+  --cohort-csv data/evolving_seed_0_cohorts.csv \
+  --lineage-events data/evolving_seed_0_lineage.jsonl
+```
+
+Both new flags default OFF and work independently of `--csv` and `--events`.
+Destinations are overwritten, like existing output flags; all output and sidecar
+paths must be distinct. Each cohort CSV has a `.metadata.json` sidecar containing
+the same config ID and explicit definitions. Observational flags are outside
+Config, so toggling them does not change config IDs. Programmatic callers can
+pass `cohort_sink` and/or `lineage_sink` to `Simulation`/`create_default`.
+
+Cohort CSV is tidy: nine rows (perception 0–8) for tick 0 and every completed
+tick, even for empty cohorts. Counters are **per tick, not cumulative**. Tick 0
+records the initial population/means, with zero events and zero exposures.
+
+| Field | Exact definition |
+| --- | --- |
+| `living_population` | Alive individuals at completed tick, after deaths are removed and newborns added. |
+| `living_agent_ticks` | One per individual in that completed snapshot, except tick 0 contributes zero. Includes newborns; excludes that tick's deaths. |
+| `action_opportunities` | One per individual actually entering the action phase. Excludes newborns; includes individuals that die after their action. All ages/actions count, not just reproductively eligible individuals. |
+| `births_as_child` | Births attributed to the child's genome perception. No founder births are counted. |
+| `successful_parent_participations` | Both parents at each successful birth, attributed to each parent's perception: exactly two participations per birth, including two in the same cohort if applicable. Counts remain even if a parent dies that tick. |
+| `reproduction_initiations` | Only the individual choosing REPRODUCE, including unsuccessful attempts. The compatible partner is not an initiator unless it independently chooses that action. |
+| `failed_reproduction_attempts` | Initiations without a birth, including biological/partner and computational-population-limit failures. |
+| `deaths` and `*_deaths` | Deaths attributed to genome perception at death; causes are starvation, dehydration, old_age, energy in the existing priority order. Genomes normally change only at birth. |
+| `mean_signal_probability`, `mean_hunger_multiplier`, `mean_thirst_multiplier` | Means over living members of that completed cohort only. |
+| `mean_generation`, `mean_age` | Living members' means; newborn age is zero. |
+
+Empty-cohort means are `None`, written as blank cells. A newborn has one living
+agent-tick on its birth tick and **no action opportunity until the next tick**.
+A dying agent has the converse. Summed over cohorts, parent participations equal
+twice births; initiations minus failures equal births; causes sum to deaths.
+The observer retains only nine rows of counters and an O(N) temporary scalar
+aggregation, never dead Human objects, genome history, or per-tick history.
+No Q-table/recency lookup is needed. Extinction's final tick is emitted once;
+subsequent no-op steps do not emit duplicate rows.
+
+`--lineage-events` reuses existing `Event`/`JSONLEventWriter` and the same birth
+event used by detailed logging. It streams `run_started` (config), `founder`
+(ID, genome, generation=0, tick=0), `birth` (child, **both** parents, genome,
+generation, position), and `death` (agent ID, tick, cause, genome at death).
+The CLI appends `run_finished` with final tick/population, including if no event
+happened at that tick. A programmatic caller may append the same Event when
+closing a run. Without that marker, the lineage analyzer warns and uses the last
+event tick as its known horizon. Deaths are emitted during action processing;
+birth events follow the phase, so a parent's death may precede its child's birth
+record **within the same tick**. This preserves existing birth timing.
+There are no observation/action/Q-table payloads per individual per tick in this
+compact log. Full `--events` logging remains a separate, potentially large option.
+
+#### Analyze recorded cohorts and lineages
+
+```bash
+python3 -m experiments.analyze_perception_cohorts --window-size 1000
+python3 -m experiments.analyze_lineages --ticks 0 1000 2000 3000 4000 5000
+```
+
+Cohort input defaults to `data/evolving_seed_*_cohorts.csv`; results go to
+`analysis/perception_cohorts/`:
+
+- `perception_frequency_over_time.png` (living shares, NaN at extinction),
+  `perception_population_over_time.png` (absolute counts).
+- `perception_reproductive_rate.png`, `perception_death_rate.png`:
+  windowed parent-participation and death rates per action opportunity.
+- `perception_exposure.png`: per-window action exposure to reveal sparse cohorts.
+- `perception_traits_over_time.png`: p0/p1/p2; `perception_traits_all_cohorts.png`:
+  all nine cohorts, with thinner dashed lines for p3–p8.
+- `cohort_summary.csv`: separate **seed × perception** rows with total recorded
+  exposures/events, death causes, rates, tick range and observed tick count.
+- `cohort_window_rates.csv`: separate seed/perception/window counts and rates,
+  first/last observed tick, observed tick count, and `complete_window`.
+- `cohort_window_summary.csv`: equal-seed mean/std/min/max/n for those window
+  values; `cohort_time_series.csv`: equal-seed count/share/trait summaries.
+- `analysis_metadata.json`.
+
+Rate windows are **(0,1000], (1000,2000], ...** by default. Within each seed and
+window, divide summed successful parent participations, deaths, or initiations
+by summed `action_opportunities`. A zero denominator gives NaN, never zero.
+Then average these per-seed rates with equal seed weights; do not pool exposure
+across seeds. These are crude participation/death rates, not age-, eligibility-,
+location-, or generation-adjusted fitness estimates. Offspring need not inherit
+the parents' perception, so participation minus death is not a cohort growth rate.
+
+Missing whole ticks warn; only observed counts contribute and partial windows
+are flagged. There is no extrapolation or survival carry-forward. Every recorded
+tick must contain all nine cohorts; missing cohort rows are errors rather than
+assumed zero. Counts, cause totals, and birth/participation identities are
+validated. Small cohorts can have volatile trait means/rates: always inspect
+exposure, population, and each metric's finite-seed `n`. With just seed 0, SD
+is undefined. All plots use 180 dpi, with deterministic CSV/PNG output in the
+same software environment; no significance or optimality tests are performed.
+
+Lineage input defaults to `data/evolving_seed_*_lineage.jsonl`. The optional
+offline analyzer retains both parents in a DAG. A founder's descendants are
+individuals reachable through **either** parental path, excluding that founder
+itself. Memberships overlap; they are not independent lineages and must not be
+summed into population totals. Bitsets store founder reachability, not genetic
+contribution. Outputs in `analysis/lineages/`:
+
+- `parent_child_edges.csv`: both parent IDs for every child.
+- `founder_descendants.csv`: descendants ever born and still alive by each selected
+  tick (plus the final known tick), per seed/founder.
+- `founder_trait_distributions.csv`: living descendant counts per perception and
+  mean/min/max hunger, thirst, signal within each founder/perception membership.
+- `ancestry_mixing.csv`: living population and mean/min/max reachable founder
+  count per individual; `analysis_metadata.json`.
+
+This modest offline analysis costs roughly founders × recorded individuals ×
+selected ticks; it is not a scalable inference of independent genetic lineages.
+Extensive ancestry overlap can make founder membership uninformative about
+hitchhiking. Recent-ancestor or trait-transmission analyses remain future work.
+
+#### Verified observation results
+
+All **143 tests** pass with analysis dependencies (118 existing + 25 added).
+The new suite covers attribution, exposures, empty populations, counts/bounds,
+both-parent event reuse, per-seed rates, missing ticks, NaNs, deterministic
+analysis bytes, and four observation modes: OFF, cohort only, lineage only,
+both. Each mode is compared every tick for 120 ticks under all four combinations
+of legacy/evolution and RandomBrain/LearningBrain. Checks include all bodies,
+genomes, ordering, resources, signals, statistics, Q values/LRU order, pending
+transitions, all simulation/brain RNG states, and unchanged global random state.
+
+Before simulation edits, seed 0 × 5000 ticks was recorded at commit `1dbda1e`.
+Afterward, OFF and both-ON runs matched all **5001 aggregate snapshots**, plus
+complete-state hashes at ticks 0, 100, 1000, 2000, 3000, 4000, 5000. The actual
+new CLI aggregate also matches every pre-existing
+`v03_learning_seed_0_5000.csv` statistics cell. No existing tests or ecological
+parameters were changed. `data/perception_observation_verification.json` stores
+hashes/method and `data/perception_observation_runtime.json` the CLI measurement.
+
+Local step-plus-write times, excluding validation hashing: before **76.78 s**,
+after OFF **78.02 s**, both ON **80.51 s** (about 3.2% above after-OFF).
+Separate actual CLI wall time was **78.76 s**. These are single local measurements,
+not performance guarantees; the OFF run partly overlapped tests. Seed 0 output
+sizes excluding small sidecars: aggregate **2,089,165 bytes**, cohort
+**7,673,406 bytes** (45,009 data rows), compact lineage **17,259,256 bytes**.
+At 5000 ticks this is 28,465 birth and 27,735 death records, plus 100 founders
+and start/end markers, rather than millions of agent-step records.
+
+Existing ten-seed free evolution shows mean perception **2.0435 ±0.0744 at
+tick 1000**, **0.5146 ±0.3656 at 3000**, and **0.06116 ±0.02080 at 5000**.
+The first recorded mean below 1 varies from tick **1874 to 3085** across seeds.
+Final population is **819.8 ±31.65** and living memory **14.827 ±0.751 states**;
+at tick 1000 memory was **47.556 ±1.482**. These simultaneous changes do not
+identify causality, cohort exposure, or ancestry from old aggregate CSVs alone.
+
+New seed 0 ends with **830** living agents: **p0=779 (93.86%), p1=46, p2=5**.
+Births=28,465, deaths=27,735, highest generation=143. In the (1000,2000] window:
+
+| Cohort | Action opportunities | Successful parent participations / opportunity | Deaths / opportunity |
+| --- | ---: | ---: | ---: |
+| p0 | 13,542 | 0.01684 | 0.00524 |
+| p1 | 156,685 | 0.01445 | 0.00674 |
+| p2 | 501,547 | 0.01427 | 0.00755 |
+
+The preceding p0 window has only **172** opportunities and one successful parent
+participation; its rate is especially unstable. p7/p8 have no exposure in this
+run. Final p0/p1 mean thirst multipliers are 0.92437/0.93012; p2's 1.01050 comes
+from only five survivors. These associations are from **one seed**, confounded by
+timing, age, location and other traits, and do not establish a perception effect.
+By tick 3000, **every living individual reaches all 100 founders** through its
+two-parent ancestry; the same holds at tick 5000. Thus founder reachability is
+already saturated here and cannot distinguish a small successful genetic lineage
+or prove hitchhiking. The birth/death DAG is available for finer offline analysis.
+
+To collect ten comparable observed replicates in a new directory (including
+seed 0 again without overwriting the verified seed-0 files):
+
+```bash
+for seed in {0..9}; do
+  python3 main.py --mode evolution --brain learning --seed "$seed" --ticks 5000 \
+    --csv "data/cohort_replicates/evolving_seed_${seed}.csv" \
+    --cohort-csv "data/cohort_replicates/evolving_seed_${seed}_cohorts.csv" \
+    --lineage-events "data/cohort_replicates/evolving_seed_${seed}_lineage.jsonl"
+done
+python3 -m experiments.analyze_perception_cohorts --data-dir data/cohort_replicates
+python3 -m experiments.analyze_lineages --data-dir data/cohort_replicates
+python3 -m experiments.analyze_evolving_perception --data-dir data/cohort_replicates \
+  --pattern 'evolving_seed_[0-9].csv'
+```
+
 ## Renewable resources and population
 
 Every tile is eligible for environmental renewal; there are no plants, rainfall,
@@ -657,11 +895,13 @@ One seed cannot distinguish selection from drift or establish long-term stabilit
 Extinction remains legitimate and is tested. Multiple generations and acquired
 behavior do not establish intelligence, culture, or emergent language.
 
-The next experiment should compare RandomBrain and LearningBrain across the same
-replicated seeds and unchanged ecological configurations, reporting survival,
-births/deaths, agent-time exposure, resource use, and trait distributions. Follow
-with explicit frozen-learning and perception ablations to separate learning from
-feature/exploration effects. Keep hyperparameters fixed before interpreting the
-comparison; do not tune the ecology until a controller wins. Signal-learning
-mechanisms remain future work, and no extension should directly script farming,
-institutions, or other civilization outcomes.
+Replicated LearningBrain evolution runs, fixed p0/p1/p2/p4 × ten seeds, and
+offline fixed-perception analysis are now complete. The next research task is
+to investigate why free evolution moves perception toward zero despite larger
+populations in fixed p1/p2 conditions: replicate within-population cohort
+exposure rates and inspect ancestry/other-trait associations. The new seed-0
+observations do not yet identify the cause. Keep ecological and learning
+parameters fixed while collecting comparable replicates; refine recent-ancestor
+analysis before drawing lineage conclusions from saturated founder memberships.
+Signal learning remains future work, and no extension should directly script
+farming, institutions, or other civilization outcomes.

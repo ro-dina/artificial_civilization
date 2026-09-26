@@ -5,3 +5,6 @@ __pycache__/
 data/*
 !data/.gitkeep
 /analysis/fixed_perception/
+/analysis/evolving_perception/
+/analysis/perception_cohorts/
+/analysis/lineages/
