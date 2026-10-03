@@ -1,0 +1,6 @@
+window_end,n,expected_seeds,higher_reproduction_and_lower_death,both_metabolic_multipliers_lower,neither_metabolic_multiplier_lower,both_rate_directions_with_neither_metabolic_lower,seeds_both_rate_directions_with_neither_metabolic_lower
+1000,10,10,4,2,4,2,"1,8"
+2000,10,10,10,5,2,2,"4,9"
+3000,10,10,10,2,2,2,"0,1"
+4000,10,10,10,2,3,3,"2,3,7"
+5000,9,10,7,2,5,4,"5,6,7,9"

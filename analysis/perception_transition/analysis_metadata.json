@@ -1,0 +1,84 @@
+{
+  "python": "3.11.9",
+  "pandas": "2.2.3",
+  "matplotlib": "3.9.4",
+  "script_sha256": "75509090b044637cb37979f8fbec5c5e3057775d36bdd5ccef33a67609970ef8",
+  "helper_sha256": "328ddc2e8d347ffe9e639d66fcdc40ce8c3453b59dac74cdc0afef066e78c2d1",
+  "aggregation_helper_sha256": "346fa75571d2a510107b18f9be1668fb5a3776cf479f83022e3ea1e84403f35c",
+  "inputs": [
+    {
+      "seed": 0,
+      "file": "evolving_seed_0_cohorts.csv",
+      "sha256": "80eb422834c9513aea392dad6259aa738e9897e528eef19cc917024714ed587d"
+    },
+    {
+      "seed": 1,
+      "file": "evolving_seed_1_cohorts.csv",
+      "sha256": "4e0525019303cec1bf034092027015bc2b3acd4c73460ab07c067902a313c802"
+    },
+    {
+      "seed": 2,
+      "file": "evolving_seed_2_cohorts.csv",
+      "sha256": "dc4645e102b147821e25e860703b84ddb08f183a048e6e50e7ff695c7965b7f9"
+    },
+    {
+      "seed": 3,
+      "file": "evolving_seed_3_cohorts.csv",
+      "sha256": "729da146c0e70227510514cd6bf4d0d894dc7d5499b0e70070c8ba907e34adbf"
+    },
+    {
+      "seed": 4,
+      "file": "evolving_seed_4_cohorts.csv",
+      "sha256": "8f82a250f5b6b6fdbe4d0943bf7d0fc9646331b367d2736942a872f3f62bc816"
+    },
+    {
+      "seed": 5,
+      "file": "evolving_seed_5_cohorts.csv",
+      "sha256": "fc4cd03d11bc8a2d5bb6a645fa987123edd152b3effb6cb77d7b7ed2d9ed71cb"
+    },
+    {
+      "seed": 6,
+      "file": "evolving_seed_6_cohorts.csv",
+      "sha256": "668c96a62df22de491eeead8d4f826ea5d11ac9d20a4c4dc8e3cb876da19d9f2"
+    },
+    {
+      "seed": 7,
+      "file": "evolving_seed_7_cohorts.csv",
+      "sha256": "c9caab473468e390eb32e14d36b593a1a0778fdbbcf3e5ef99c6fc3765e1e18b"
+    },
+    {
+      "seed": 8,
+      "file": "evolving_seed_8_cohorts.csv",
+      "sha256": "b3ba1a53b57f7123016dbe8d71a0cd66356b6dee7f34c601c22bde9198e569dc"
+    },
+    {
+      "seed": 9,
+      "file": "evolving_seed_9_cohorts.csv",
+      "sha256": "ab245ffb753c54076b3bbafa5c9dace505ba217d3b42d2a8ff4edea15fce17a2"
+    }
+  ],
+  "aggregation": "Equal run weights; sample SD ddof=1; per-metric finite n; no inference of causality",
+  "missing": "No interpolation or carry-forward; undefined means/rates are empty CSV cells",
+  "source_directory": "data/cohort_replicates",
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "windows": "(0,1000], (1000,2000], (2000,3000], (3000,4000], (4000,5000]",
+  "population_share": "Arithmetic time mean of cohort_population / total_population over recorded ticks; absent cohort is zero when total>0",
+  "traits_age_generation": "Sum(recorded living-cohort mean * living_population) / sum(living_population) over finite observations within seed/window",
+  "rates": "Sum(events) / sum(action_opportunities) within seed/window; zero denominator is NaN",
+  "sensitivity": "Equal-weight time means over cohort-present finite ticks, then paired p0-p2 differences",
+  "matched_tick_sensitivity": "Mean(p0_cohort_mean(t) - p2_cohort_mean(t)) over shared living ticks within seed/window; same time weights for both cohorts",
+  "signs": "Strictly positive/negative/exact zero, paired within seed; missing excluded with n reported; no significance test",
+  "learning": "No memory or learning-update columns recorded in cohort CSV; no cohort-level learning inference",
+  "simulation_executed": false
+}

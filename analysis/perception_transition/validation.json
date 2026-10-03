@@ -1,0 +1,9 @@
+{
+  "analysis_only": true,
+  "synthetic_arithmetic_tests_passed": 8,
+  "independent_raw_csv_arithmetic_checks": 1050,
+  "complete_seed_tick_grids": true,
+  "input_csv_hashes_unchanged": true,
+  "repeated_output_files_byte_identical": 33,
+  "python_and_numpy_rng_unchanged": true
+}
