@@ -1,0 +1,189 @@
+{
+  "study": "perception baseline study",
+  "preserved_date": "2026-10-03",
+  "status": "observational baseline complete; causal investigation deferred until needed",
+  "output_count": 33,
+  "outputs": [
+    {
+      "path": "analysis_metadata.json",
+      "bytes": 3281,
+      "sha256": "ed0a02840e6182f2d61013ecdac0dd5d5f73b3540257505c71669faf5dd01db9"
+    },
+    {
+      "path": "death_rate_by_window.png",
+      "bytes": 192199,
+      "sha256": "c7ef0787e55649ca1b6c0ccaf5b7424bea879489b495bd20552dc411464af558"
+    },
+    {
+      "path": "early_transition.png",
+      "bytes": 942599,
+      "sha256": "918dca3d53de137644c74fb6c0e8d76bafeedcbcba3150b179fddd62c7b96f97"
+    },
+    {
+      "path": "early_transition_by_seed.csv",
+      "bytes": 15979,
+      "sha256": "1869ce7bb1e76c0d669c6274c209a9c120b9d82ec5e14629f4981a5af2c507b1"
+    },
+    {
+      "path": "early_transition_summary.csv",
+      "bytes": 5340,
+      "sha256": "457e98531452e0532794f2cae1aa7eeab4af8037b338945aa995e8410c39528b"
+    },
+    {
+      "path": "equal_tick_weighting_sensitivity.csv",
+      "bytes": 6104,
+      "sha256": "3c9e614816605e61fd179875806cbefb717249e7032bb0ec523b398af741407e"
+    },
+    {
+      "path": "input_audit.csv",
+      "bytes": 313,
+      "sha256": "85884ecdb6f6579fad47d7ce80456eda3f988b249ed87206edd432e65d376881"
+    },
+    {
+      "path": "joint_sign_patterns.csv",
+      "bytes": 371,
+      "sha256": "2f5b727d5fbc97505540fb64db5412c8d03a954647ce75cab24cf0152448eb72"
+    },
+    {
+      "path": "matched_tick_difference_summary.csv",
+      "bytes": 4310,
+      "sha256": "e1672257bc7977a165f58c15059e36939c774eee94a80838565f6aeb8c3c3e78"
+    },
+    {
+      "path": "matched_tick_differences_by_seed.csv",
+      "bytes": 7780,
+      "sha256": "cddf26c7de73552ca7cd3a9ce77742ee50b0ca48dab7cb4cedeb467928df3f79"
+    },
+    {
+      "path": "matched_tick_sensitivity.png",
+      "bytes": 374003,
+      "sha256": "22810fe54b880415beaa958381c96a6538c3561813b5c62c6155d652309bc545"
+    },
+    {
+      "path": "mean_age_by_window.png",
+      "bytes": 183177,
+      "sha256": "02a8cdae1d7e255b2f3c9654af8694a4e2f9398476e7b88afd6e52b564ed550b"
+    },
+    {
+      "path": "mean_generation_by_window.png",
+      "bytes": 211878,
+      "sha256": "fc777fe53f645839d1c2dd3fcc9ef16a210988296d1cf933cd6dda39cc71d5f3"
+    },
+    {
+      "path": "mean_hunger_multiplier_by_window.png",
+      "bytes": 209641,
+      "sha256": "84684d975734f72fc4089fa6d9003fbfb1ad77205ca93e42e1b6f7050ad3a0d2"
+    },
+    {
+      "path": "mean_signal_probability_by_window.png",
+      "bytes": 180872,
+      "sha256": "d41d8bfce04521d25135aa47887235798d6f4123e9fb2669db626b54511e598d"
+    },
+    {
+      "path": "mean_thirst_multiplier_by_window.png",
+      "bytes": 212587,
+      "sha256": "6753829454b5b2e476e95204a2bd98ed30614983b3992f545bec892be16ceffe"
+    },
+    {
+      "path": "p0_minus_p2_by_seed.csv",
+      "bytes": 15368,
+      "sha256": "01a784dc502f8f886242c1169aef8a16f7044cfa5adc1d1e5f1f2ada8525b661"
+    },
+    {
+      "path": "p0_minus_p2_death_rate.png",
+      "bytes": 235014,
+      "sha256": "adf404fad63a0e17e159521ebce11bde696b0457450d21cfe70781e45aaac9a1"
+    },
+    {
+      "path": "p0_minus_p2_mean_age.png",
+      "bytes": 224156,
+      "sha256": "0d3a07a55abfe1044ef8d9bf41eb4c17ce1de46d7cb3d88623ae37ebbe077d9e"
+    },
+    {
+      "path": "p0_minus_p2_mean_generation.png",
+      "bytes": 260936,
+      "sha256": "15fb0520b2bb26117a42f4d6ced9175249ae8d2750818854b87197a1454614b8"
+    },
+    {
+      "path": "p0_minus_p2_mean_hunger_multiplier.png",
+      "bytes": 235762,
+      "sha256": "374291152740d76dbf68402bcc735ef3103eb5c568dc56f49a2009714038dd89"
+    },
+    {
+      "path": "p0_minus_p2_mean_signal_probability.png",
+      "bytes": 202500,
+      "sha256": "4fccd4828f5cfcf1557f4c6b9d15e61f063bb728133762f61a47bb6242211b21"
+    },
+    {
+      "path": "p0_minus_p2_mean_thirst_multiplier.png",
+      "bytes": 230596,
+      "sha256": "a45eaf85671f90de436c63af76f4927da6331c969eb202b6782efc34dcb29cda"
+    },
+    {
+      "path": "p0_minus_p2_population_share.png",
+      "bytes": 290031,
+      "sha256": "78c3a1aa747e964f727ecf575b2b68614098c45f5d00d58d122b4f957402f6b7"
+    },
+    {
+      "path": "p0_minus_p2_reproductive_participation_rate.png",
+      "bytes": 214233,
+      "sha256": "981f03f927fe6045cb18d77a67a12eb81b965f96d7b2eaaa8142131421f9bf55"
+    },
+    {
+      "path": "p0_minus_p2_summary.csv",
+      "bytes": 8630,
+      "sha256": "7489c145841f2524b521be8c530c1a2ead3dad13ba95c3b691934f2745d72c0f"
+    },
+    {
+      "path": "paired_gap_transition_by_seed.csv",
+      "bytes": 6780,
+      "sha256": "52e822be087da543fa88194a03fd7ec0cbbebaec389a8b003e0ff2b68dd7096c"
+    },
+    {
+      "path": "paired_gap_transition_summary.csv",
+      "bytes": 3492,
+      "sha256": "399e73713a50dc9bfc801bccb2267d6dd0ecddd38f9c347c15cdfa6854b4e044"
+    },
+    {
+      "path": "population_share_by_window.png",
+      "bytes": 210750,
+      "sha256": "1db29e98b7e544a9f24d3c4dfeec8a7a6fe62af5b8a6980ad1f698b557fab7af"
+    },
+    {
+      "path": "reproductive_participation_rate_by_window.png",
+      "bytes": 208447,
+      "sha256": "f701132e64144d6da54191a6d03b3f1a16c5008e82ad0868de74a669fc2c385f"
+    },
+    {
+      "path": "window_comparison.csv",
+      "bytes": 13660,
+      "sha256": "68813fdfcc287e86538ce35b786a9e92afe214ea693697932f7e0db44870dacd"
+    },
+    {
+      "path": "window_metrics_by_seed.csv",
+      "bytes": 54618,
+      "sha256": "cb94b467df3961ccd0c783412c1feab2de99a43cda96fbfab8053ee91b69b4fa"
+    },
+    {
+      "path": "window_metrics_summary.csv",
+      "bytes": 18798,
+      "sha256": "7ea52971958911c2217cdd9c2284e524ca6803d9be7866311248d70166c35e1b"
+    }
+  ],
+  "supporting_documents": [
+    {
+      "path": "README.md",
+      "bytes": 11505,
+      "sha256": "b7965f8cbd99138253af1e561b0cf54ba369af7be6feadc5ab354dba173e23ec"
+    },
+    {
+      "path": "validation.json",
+      "bytes": 281,
+      "sha256": "c1aad216f198ec7d7dd455ed8f00c4181ad702910ad05e76762a86706b93557e"
+    }
+  ],
+  "archive": "../perception_baseline_study.zip",
+  "archive_layout": "perception_transition/<filename>",
+  "raw_inputs_included": false,
+  "raw_input_reference": "data/cohort_replicates; hashes retained in analysis_metadata.json"
+}

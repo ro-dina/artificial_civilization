@@ -1,5 +1,13 @@
 # Perception transition：既存10 seedの追加解析
 
+**2026-10-03：perception baseline study として観測研究を完了し、結果を保存。**
+perception自体の因果解明は未解決のまま、将来必要になった時点で再開する。
+追加のsimulationや因果解析は現在の継続タスクとしない。
+33出力（CSV14個・PNG18個・metadata）は変更せず、本文と検証記録を添えて
+[`perception_baseline_study.zip`](../perception_baseline_study.zip) に保存した。
+ファイルごとのSHA-256は [`baseline_manifest.json`](baseline_manifest.json) に記録。
+以下は完了済み研究の記録であり、再開する場合は別の出力ディレクトリを使う。
+
 入力は `data/cohort_replicates/evolving_seed_0_cohorts.csv`〜`evolving_seed_9_cohorts.csv` とそのmetadataのみ。10 seedとも tick 0〜5000、各tickにp0〜p8の9行が揃っている。非空cohortの対象平均値に欠損はない。設定はseedを除いて一致する。新しいsimulationは実行しておらず、入力CSV・Config・Brain・RNG・生態ルールを変更していない。
 
 ## 集計の定義

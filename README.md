@@ -401,9 +401,11 @@ and does not label any perception radius optimal.
 
 ### Free-evolution observations and cohort analysis
 
-The replicated LearningBrain runs and fixed p0/p1/p2/p4 experiments are complete.
-The next question is why freely inherited perception tends toward zero even
-though fixed p1/p2 populations were larger than fixed p0 populations. A **fixed
+The replicated LearningBrain runs, fixed p0/p1/p2/p4 experiments, and ten-seed
+cohort follow-up are complete and preserved as the
+[perception baseline study](#perception-baseline-study). Why freely inherited
+perception tends toward zero despite larger fixed p1/p2 populations remains
+unresolved; causal investigation is deferred until needed. A **fixed
 condition's population is an ecological outcome**; reproductive participation
 and death rates **within a mixed population** measure different quantities.
 Neither establishes the cause of trait change on its own.
@@ -621,8 +623,9 @@ two-parent ancestry; the same holds at tick 5000. Thus founder reachability is
 already saturated here and cannot distinguish a small successful genetic lineage
 or prove hitchhiking. The birth/death DAG is available for finer offline analysis.
 
-To collect ten comparable observed replicates in a new directory (including
-seed 0 again without overwriting the verified seed-0 files):
+The following commands document how the ten observed replicates were collected.
+They are retained for reproducibility, not as a pending experiment; the baseline
+study is complete. Reusing these destinations would overwrite those runs:
 
 ```bash
 for seed in {0..9}; do
@@ -636,6 +639,63 @@ python3 -m experiments.analyze_lineages --data-dir data/cohort_replicates
 python3 -m experiments.analyze_evolving_perception --data-dir data/cohort_replicates \
   --pattern 'evolving_seed_[0-9].csv'
 ```
+
+### Perception baseline study
+
+**Status (2026-10-03): observational baseline complete and preserved.** Further
+work to identify the causal effect of perception itself is deferred. Reopen that
+question only when a future research or design decision needs it; there is no
+scheduled additional simulation or causal-analysis task for this study.
+
+The study used the existing `data/cohort_replicates` LearningBrain free-evolution
+seeds 0–9, each covering ticks 0–5000. It compared p0/p1/p2 in five 1000-tick
+windows. Rates were calculated per seed from event counts / action opportunities;
+living traits, age, and generation used living-exposure weights within a seed.
+Seed-level values were then summarized with equal weights and sample SD
+(`ddof=1`), preserving paired p0−p2 differences, finite n, and exposure.
+No new simulation or changes to simulation dynamics were used for this analysis.
+
+Recorded findings:
+
+- In each of (1000,2000], (2000,3000], and (3000,4000], p0 had higher successful
+  parent participation per action opportunity and lower death per opportunity
+  than p2 in **10/10 seeds**. These are descriptive cohort comparisons.
+- The first window was seed-dependent and p0 exposure was sparse (172–9467
+  action opportunities). In the last window, each rate direction held in 8/9
+  evaluable seeds; seed 8 had no p2 exposure. The two exceptions were different
+  seeds, so both directions held simultaneously in 7/9.
+- Hunger/thirst differences were not consistent across seeds. In (1000,2000],
+  seeds 4 and 9 had both p0 metabolic means at least as high as p2, yet the same
+  rate directions. A simple uniformly-lower-metabolism explanation is unsupported;
+  this does not rule out other-trait or demographic explanations.
+- Temporal composition matters: the (1000,2000] p0−p2 generation difference was
+  **+7.847** with separate cohort exposure weights, but **−0.223** when comparing
+  both cohorts at the same ticks with equal time weights. Growing and shrinking
+  cohorts weight different parts of a window differently.
+
+Individual trait combinations, age distributions, reproductive eligibility,
+location/resource conditions, and cohort-specific learning state were not
+controlled. Cohort learning metrics were not recorded. **The causal effect of
+perception=0 has not been identified.** This uncertainty is part of the retained
+baseline, not a reason to continue this investigation immediately.
+
+Preserved deliverables:
+
+- [Detailed report and output index](analysis/perception_transition/README.md).
+- **33 unchanged analysis outputs** in `analysis/perception_transition/`:
+  14 CSVs, 18 PNGs, and `analysis_metadata.json` (input hashes and methods).
+- [Validation record](analysis/perception_transition/validation.json): eight
+  arithmetic tests, 1050 independent raw-CSV checks, byte-identical regeneration
+  of all 33 outputs, and unchanged input hashes/Python/NumPy RNG states.
+- [Baseline archive](analysis/perception_baseline_study.zip): the 33 outputs,
+  report, validation record, and
+  [SHA-256 manifest](analysis/perception_transition/baseline_manifest.json).
+
+The archive preserves this snapshot if the working analysis directory is reused.
+It contains derived results, not the raw `data/cohort_replicates` inputs, which
+remain local and are ignored by Git. Keep those inputs for future recomputation.
+If this question is reopened, use the existing analyzer with a different output
+directory (`--output-dir`) to keep follow-up results separate from this baseline.
 
 ## Renewable resources and population
 
@@ -895,13 +955,11 @@ One seed cannot distinguish selection from drift or establish long-term stabilit
 Extinction remains legitimate and is tested. Multiple generations and acquired
 behavior do not establish intelligence, culture, or emergent language.
 
-Replicated LearningBrain evolution runs, fixed p0/p1/p2/p4 × ten seeds, and
-offline fixed-perception analysis are now complete. The next research task is
-to investigate why free evolution moves perception toward zero despite larger
-populations in fixed p1/p2 conditions: replicate within-population cohort
-exposure rates and inspect ancestry/other-trait associations. The new seed-0
-observations do not yet identify the cause. Keep ecological and learning
-parameters fixed while collecting comparable replicates; refine recent-ancestor
-analysis before drawing lineage conclusions from saturated founder memberships.
-Signal learning remains future work, and no extension should directly script
-farming, institutions, or other civilization outcomes.
+Replicated LearningBrain evolution, fixed p0/p1/p2/p4 × ten seeds, and the
+ten-seed cohort transition analysis are retained as the
+[perception baseline study](#perception-baseline-study). This observational
+study is complete. Perception's causal role remains unresolved and is deferred
+until a future question requires it; additional perception experiments are not
+the current next task. Reuse the preserved results as a reference for subsequent
+development. Signal learning remains future work, and no extension should
+directly script farming, institutions, or other civilization outcomes.
