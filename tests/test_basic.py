@@ -6,6 +6,7 @@ import random
 import unittest
 
 from agents.brain import Action, Decision
+from agents.observation import HeardSignal, SourceDirection
 from config import Config
 from simulation.events import JSONLEventWriter
 from simulation.simulation import Simulation
@@ -196,7 +197,9 @@ class CommunicationTests(unittest.TestCase):
         comm.advance()
         heard = comm.hear(2, 5, 5)
         self.assertEqual(len(heard), 1)
-        self.assertEqual((heard[0].signal_id, heard[0].sender_id, heard[0].dx, heard[0].dy), (15, 1, -2, -2))
+        self.assertEqual(heard[0], HeardSignal(15, SourceDirection.NW))
+        diagnostic = comm.diagnostics(2, 5, 5, receiving_tick=2)[0]
+        self.assertEqual((diagnostic["sender_id"], diagnostic["sender_position"]), (1, {"x": 3, "y": 3}))
         self.assertEqual(comm.hear(2, 6, 3), ())
         self.assertEqual(comm.hear(1, 3, 3), ())
         comm.advance()
@@ -205,17 +208,19 @@ class CommunicationTests(unittest.TestCase):
     def test_spatial_buckets_match_distance_rule(self):
         positions = [(x, y) for y in range(7) for x in range(7)]
         for radius in (0, 1, 2, 3):
-            comm = Communication(4, radius)
+            # Distinct meaningless IDs let this mechanism test identify deliveries
+            # without giving sender identity to real Brain-facing observations.
+            comm = Communication(len(positions), radius)
             for sender, (x, y) in enumerate(positions):
-                comm.emit(sender % 4, sender, x, y)
+                comm.emit(sender, sender, x, y)
             comm.advance()
             for receiver, (x, y) in enumerate(positions):
                 expected = {sender for sender, (sx, sy) in enumerate(positions)
                             if sender != receiver and max(abs(sx - x), abs(sy - y)) <= radius}
-                self.assertEqual({s.sender_id for s in comm.hear(receiver, x, y)}, expected)
+                self.assertEqual({s.signal_id for s in comm.hear(receiver, x, y)}, expected)
 
     def test_vocabulary_sizes_and_invalid_signals(self):
-        for size in (4, 16, 256, 4000):
+        for size in (4, 16, 40, 256, 4000):
             comm = Communication(size, 0)
             comm.emit(size - 1, 1, 0, 0)
             comm.advance()
@@ -247,7 +252,7 @@ class CommunicationTests(unittest.TestCase):
         sender.brain = FixedBrain(Action.MOVE_EAST, signal=2)
         sim.step()
         sim.step()
-        self.assertEqual(receiver.brain.observations[1].signals[0].dx, 0)
+        self.assertEqual(receiver.brain.observations[1].signals[0].source_direction, SourceDirection.SAME_CELL)
 
 
 class SimulationTests(unittest.TestCase):

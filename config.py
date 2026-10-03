@@ -21,6 +21,7 @@ INITIAL_ENERGY = 100
 REPRODUCTIVE_TYPES = (0, 1)
 SIGNAL_VOCAB_SIZE = 16
 SIGNAL_RANGE = 3
+HEARING_RADIUS = 8
 SIGNAL_PROBABILITY = 0.1
 RANDOM_SEED = 42
 MAX_TICKS = 1000
@@ -82,7 +83,9 @@ class Config:
     water_thirst_relief: float = WATER_THIRST_RELIEF
     initial_energy: float = INITIAL_ENERGY
     signal_vocab_size: int = SIGNAL_VOCAB_SIZE
-    signal_range: int = SIGNAL_RANGE
+    # Deprecated input alias: old saved configurations explicitly contain 3.
+    # New experiments should use hearing_radius instead.
+    signal_range: int | None = None
     signal_probability: float = SIGNAL_PROBABILITY
     random_seed: int = RANDOM_SEED
     max_ticks: int = MAX_TICKS
@@ -116,6 +119,7 @@ class Config:
     learning_memory_capacity: int = LEARNING_MEMORY_CAPACITY
     learning_need_bins: int = LEARNING_NEED_BINS
     fixed_perception_radius: int | None = FIXED_PERCEPTION_RADIUS
+    hearing_radius: int = HEARING_RADIUS
 
     @classmethod
     def evolution(cls, **overrides) -> "Config":
@@ -132,7 +136,7 @@ class Config:
         integer_fields = {
             "world_width", "world_height", "initial_population", "initial_food",
             "initial_water", "perception_radius", "max_age", "signal_vocab_size",
-            "signal_range", "random_seed", "max_ticks", "status_interval",
+            "signal_range", "hearing_radius", "random_seed", "max_ticks", "status_interval",
             "min_reproductive_age", "max_reproductive_age", "reproduction_radius",
             "reproduction_cooldown", "food_capacity", "water_capacity", "max_population",
             "learning_memory_capacity", "learning_need_bins", "fixed_perception_radius",
@@ -144,7 +148,7 @@ class Config:
             "learning_rate", "learning_epsilon", "learning_memory_capacity", "learning_need_bins",
         }
         optional_fields = {"max_age", "max_reproductive_age", "food_capacity", "water_capacity", "max_population",
-                           "fixed_perception_radius"}
+                           "fixed_perception_radius", "signal_range"}
         boolean_fields = {"reproduction_enabled", "energy_depletion_lethal"}
         for field in fields(self):
             name, value = field.name, getattr(self, field.name)
@@ -172,6 +176,10 @@ class Config:
                      "learning_rate", "learning_discount", "learning_epsilon"):
             if getattr(self, name) > 1:
                 raise ValueError(f"{name} must be between 0 and 1")
+        if self.signal_range is not None:
+            if self.hearing_radius not in (HEARING_RADIUS, self.signal_range):
+                raise ValueError("signal_range is a legacy alias; use hearing_radius alone for new settings")
+            object.__setattr__(self, "hearing_radius", self.signal_range)
         if self.perception_radius > GENOME_BOUNDS["perception_radius"][1]:
             raise ValueError("perception_radius exceeds the genome limit in GENOME_BOUNDS")
         if self.fixed_perception_radius is not None:

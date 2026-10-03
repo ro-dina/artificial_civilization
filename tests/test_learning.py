@@ -16,7 +16,7 @@ from agents.brain import Action, RandomBrain
 from agents.genome import Genome
 from agents.human import Human
 from agents.learning import LearningBrain, Physiology
-from agents.observation import HeardSignal, Observation, TileObservation
+from agents.observation import HeardSignal, Observation, SourceDirection, TileObservation
 from config import Config
 from experiments.learning_demo import run_demo
 from simulation.events import JSONLEventWriter
@@ -50,7 +50,7 @@ class LearningBrainTests(unittest.TestCase):
         reference = random.Random(42)
         human = Human(0, 0, 0, brain)
         empty = Observation(0, ())
-        noisy = Observation(900, (TileObservation(1, 0, 999, 999),), (HeardSignal(15, 99, -1, 0),))
+        noisy = Observation(900, (TileObservation(1, 0, 999, 999),), (HeardSignal(15, SourceDirection.W),))
         for tick in range(100):
             action = reference.choice(tuple(Action))
             signal = reference.randrange(config.signal_vocab_size) if reference.random() < human.genome.signal_probability else None
@@ -180,7 +180,7 @@ class LearningBrainTests(unittest.TestCase):
         second, b, _ = make_brain(seed=10)
         for tick in range(20):
             empty = Observation(tick, ())
-            signals = Observation(tick + 1000, (), (HeardSignal(tick % 16, 99, tick, 0),))
+            signals = Observation(tick + 1000, (), (HeardSignal(tick % 16, tuple(SourceDirection)[tick % 9]),))
             self.assertEqual(first.choose_action(a, empty), second.choose_action(b, signals))
             first.observe_outcome(Physiology.capture(a))
             second.observe_outcome(Physiology.capture(b))
@@ -237,7 +237,9 @@ class LearningBrainTests(unittest.TestCase):
 class LearningSimulationTests(unittest.TestCase):
     def test_random_seed_zero_matches_pre_v03_state_and_rng_fixture(self):
         fixture = json.loads((Path(__file__).parent / "fixtures" / "v02_seed0_tick100.json").read_text())
-        sim = Simulation(Config.evolution(random_seed=fixture["seed"]))
+        # Keep the original hearing/bucket radius: the historical digest includes
+        # exact bucket keys, in addition to all original state and RNG checks.
+        sim = Simulation(Config.evolution(random_seed=fixture["seed"], signal_range=3))
         for _ in range(fixture["ticks"]):
             sim.step()
         state = list(dynamics(sim))

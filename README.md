@@ -1,13 +1,13 @@
-# Artificial Civilization Simulation — v0.3
+# Artificial Civilization Simulation — v0.4
 
 A headless, standard-library-only artificial-life simulation for experiments in
-emergent behavior. v0.3 adds optional individual memory and experience-based
-learning to the existing survival, reproduction, inheritance, mutation, renewable
-resources, and lineage systems. The experiment is whether local sensory
-experience and physiological consequences can produce useful acquired behavior.
-The default RandomBrain remains the unchanged v0.2 control.
+emergent behavior. v0.4 separates direct visual/resource perception from
+longer-range auditory perception of meaningless signals. It retains v0.3's
+optional individual learning and the existing survival, reproduction,
+inheritance, mutation, renewable resources, and lineage systems. Both controllers'
+decision rules are unchanged; auditory input is intentionally unused.
 
-**v0.3 does not implement language learning or meaningful communication.** Only
+**v0.4 does not implement language learning or meaningful communication.** Only
 LearningBrain learns; signals have no predefined meaning and neither controller
 intentionally communicates. Agriculture, economics, emotions, religion,
 technology, crafting, combat, culture, and civilization are not implemented.
@@ -38,6 +38,15 @@ python3 main.py --mode evolution --brain learning --fixed-perception-radius 2 --
 # Controlled repeated experience, independent of evolutionary claims.
 python3 -m experiments.learning_demo
 
+# Three-tick sensory mechanism demonstration; no learned signal meanings.
+python3 -m experiments.auditory_demo
+
+# Short auditory diagnostics. Vocabulary 16 retains the v0.3 emission baseline.
+python3 main.py --mode evolution --brain learning --seed 0 --ticks 10 \
+  --hearing-radius 8 --events data/v04_auditory.jsonl
+# An explicit alternative vocabulary for future experiments (not a semantic map).
+python3 main.py --seed 0 --ticks 10 --signal-vocab-size 40
+
 # Detailed logs are opt-in; start with a short run.
 python3 main.py --mode evolution --seed 42 --ticks 50 --events data/events.jsonl
 python3 main.py --help
@@ -52,13 +61,12 @@ CSV, its generated `.metadata.json` sidecar, and events must use different paths
 Generated files under `data/` are ignored
 by Git. No GUI, rendering, multiprocessing, or automatic detailed history exists.
 
-All 72 pre-v0.3 tests remain unchanged and pass. The 25 new tests cover exact
-Q updates and reward, real observation timing, bounded independent memory,
-fresh offspring, local sensing, exploration, signal isolation, complete replay,
-logging/statistics independence, accounting, extinction, CSV metadata, a stored
-pre-v0.3 control fixture, and a controlled demonstration of learned preference.
-The fixed-perception extension adds eight tests for a total of 105 simulation tests, including
-multi-generation constraints, unchanged other-trait RNG draws, and CLI validation.
+The complete suite includes simulation, learning, observational analysis, and
+historical controls. v0.4 adds 18 auditory tests to the existing 151 tests.
+Existing auditory assertions are migrated to the intentionally narrower sensory
+record; historical state digests are retained, not regenerated to fit the change.
+See [v0.4 verification](#v04-verification-and-compatibility) for the scope of
+the regression checks and the deliberate observation/configuration migration.
 
 ## Architecture
 
@@ -82,8 +90,11 @@ tests/test_evolution.py     v0.2 tests
 tests/test_statistics.py    Living-genome summaries and observation-only verification
 tests/test_learning.py      v0.3 learning, isolation, replay, and control regression
 tests/test_fixed_perception.py Fixed-radius experiments, inheritance, and CLI validation
-tests/fixtures/             Pre-v0.3 deterministic control digest
+tests/test_auditory.py       Hearing, privacy, timing, RNG and historical controls
+tests/auditory_control.py    Full ecological state/action digest helpers
+tests/fixtures/             Pre-v0.3 and pre-v0.4 deterministic control digests
 experiments/learning_demo.py Controlled repeated-resource learning validation
+experiments/auditory_demo.py Three-tick sensory mechanism check
 experiments/analyze_fixed_perception.py Offline CSV aggregation and PNG plots
 tests/test_analyze_fixed_perception.py Analysis fixtures, missing data, and reproducibility
 requirements-analysis.txt   Optional pandas/matplotlib dependencies
@@ -93,7 +104,8 @@ The existing architecture is extended rather than replaced. A brain implements
 `choose_action(human, observation) -> Decision`. It reads its own body and local
 observation and returns a decision without mutating the body. Observations contain
 `tick`, nearby `(dx, dy, food, water)` records, and heard
-`(signal_id, sender_id, dx, dy)` records. They contain no mutable world references
+`HeardSignal(signal_id, source_direction)` records. They contain no sender
+identity, exact sender displacement/distance, mutable world references,
 or distant resource information. This remains a programming contract, not a
 sandbox for untrusted custom brains.
 
@@ -222,6 +234,175 @@ sender's post-action position, are heard only on the next tick, then expire.
 Receivers cannot hear themselves. The signal persists for that tick if its sender
 dies. There is no signal cost or built-in semantic mapping; vocabulary sizes such
 as 4, 16, 256, and 4000 need no architectural change.
+
+## Visual and auditory perception (v0.4)
+
+The long-term question is: **How do environmental conditions,
+perceptual/cognitive traits, and social conditions affect the emergence and
+development of communication and language?** This release establishes the
+sensory mechanism only. Later versions will test whether agents can learn to use
+otherwise meaningless signals and whether environmental/perceptual conditions
+affect the emergence of communication.
+
+`Genome.perception_radius` still controls exactly the same local food/water tile
+observations. `Config.hearing_radius` is a separate **nonheritable integer,
+default 8**, validated as nonnegative. It is larger than the founder visual
+radius of 2 in the default 40×30 world, while remaining local. It need not exceed
+every evolved individual's visual range. Hearing has no mutation, inheritance,
+metabolic cost, or dependency on visual perception. Radius zero permits hearing
+other agents' signals from the receiver's current cell only.
+
+Delivery retains the existing inclusive **Chebyshev distance** rule:
+`max(abs(sender_x - receiver_x), abs(sender_y - receiver_y)) <= hearing_radius`.
+Visual and reproduction distance rules are unchanged. Within auditory range,
+each signal is received perfectly; outside it, the signal is absent. There are
+no obstacles, attenuation, transmission failures, confusion, phonetic similarity,
+sound intensity, approximate-distance feature, or masking. Multiple emissions
+are retained as separate records, including identical signal IDs.
+
+The immutable, slotted Brain-facing record has exactly two fields:
+
+```python
+HeardSignal(signal_id: int, source_direction: SourceDirection)
+```
+
+`SourceDirection` is a string enum, serialized as one of the following values.
+These are **sign sectors**, not geometric angular octants. Directions describe
+the acoustic source; they do not give meanings to signal IDs.
+
+| Sign of dx | Sign of dy | Direction |
+| --- | --- | --- |
+| 0 | − | N |
+| + | − | NE |
+| + | 0 | E |
+| + | + | SE |
+| 0 | + | S |
+| − | + | SW |
+| − | 0 | W |
+| − | − | NW |
+| 0 | 0 | SAME_CELL |
+
+North decreases y. Exact sender coordinates, dx/dy, distance, strength, and
+sender ID are **not** properties of this record. Internal immutable `Signal`
+records still hold emission position and sender ID for filtering and self
+exclusion; no reference to them is given to the Brain.
+
+During acting tick **t**, an agent observes signals emitted in **t−1**, relative
+to its current pre-action position. It then chooses and executes its action,
+and any new emission uses its **post-action** position. That emission cannot be
+heard during t, even by an agent acting later in the same tick. The end-of-tick
+buffer swap makes it available throughout the acting phase of t+1, then it
+expires. Self-signals are excluded. Death or subsequent movement of a sender
+does not erase or relocate the already emitted signal. Newborn action timing
+and every biological/learning/statistics phase remain unchanged. The public
+`sim.observe()` helper called between steps reads the prepared next-phase buffer;
+its `tick` is still the last completed tick. Event logs and the demo use actual
+in-step observations to identify receiving ticks unambiguously.
+
+`LearningBrain.state()` is unchanged: hunger, thirst, and energy bins plus
+nearest visible food and water directions. It ignores **all auditory features**,
+including direction. Q updates, rewards, LRU recency, and pending transitions
+are unchanged. RandomBrain still ignores observations. Emission is not an
+action: the same independent random mechanism uses inherited
+`signal_probability`, then selects a meaningless integer in
+`[0, signal_vocab_size)`. There is no communication reward, penalty, intent,
+identity recognition, signal-to-action mapping, or learned signal selection.
+
+The default vocabulary remains **16** to preserve v0.3 trajectories, especially
+RandomBrain's shared action/emission stream. Use `--signal-vocab-size 40` or
+`Config(signal_vocab_size=40)` for an explicitly different experimental setting.
+Integer neighbors have no built-in similarity: 17 is no more similar to 18 than
+to 39. Hearing/filtering/direction conversion use no randomness and create no
+new RNG stream. Neither brain implementation, the genome, nor the ecology is
+modified by this release.
+
+Full `--events` JSONL includes `auditory_schema_version: 2` in `run_started`.
+Each `agent_step.details.observation.signals` contains only the two sensory
+fields. A separate `details.auditory_diagnostics` array contains received signal
+ID, sender ID, **emission** position, receiver ID and pre-action position, coarse
+direction, Chebyshev distance, effective hearing radius, `inside_hearing_range`,
+`emitted_tick`, and `receiving_tick`. These are privileged analysis data, not
+inputs to `choose_action`. Only delivered signals are logged; all have
+`inside_hearing_range=true`. Out-of-range emissions are absent, not additional
+sensory records. Detailed payloads are constructed only for an enabled full
+event sink, streamed, and discarded; lineage-only logging does not build them.
+
+### v0.4 verification and compatibility
+
+Before product changes, short controls were captured from v0.3 commit
+`9dc56bed749a2d3e318ae2e7cbe52f6c1173b4a5` (Python 3.11.9), seed 0, 100 founders,
+ticks 0–100, in all four legacy/evolution × random/learning combinations.
+`tests/fixtures/v03_auditory_control.json` retains those results. The tests
+compare every completed state and the full action/outcome stream against them
+at both hearing radius 3 and 8. Coverage includes bodies, living IDs/genomes,
+resources, births/deaths, every aggregate, emitted signals, Q values and LRU
+order, pending transitions, all retained simulation/brain RNG states, and
+unchanged global random state. Signals are canonicalized by emission provenance
+for this comparison because bucket layout and unused auditory observations
+intentionally differ. The older v0.2 fixture still checks its original **exact**
+bucket layout at radius 3 with its unchanged stored digest.
+
+The archived `data/v03_random_seed_0.csv` and `data/v03_learning_seed_0.csv` were
+also compared directly: **all aggregate values at all 101 snapshots through
+tick 100 match exactly** at the new hearing default. Final population/births/
+deaths are 232/136/4 (Random) and 207/109/2 (Learning). Full-event logging,
+removing all heard inputs, extra observation reads, and serialization are tested
+for behavioral/RNG isolation. The full suite passes **169 tests**. No new long
+evolutionary or 5000-tick multi-seed study was run for v0.4.
+
+Intentional API/output changes:
+
+- Old `HeardSignal(signal_id, sender_id, dx, dy)` consumers must migrate to the
+  two-field auditory record. No legacy identity/coordinate properties remain on
+  a Brain-facing object. Tests of original delivery boundaries and self exclusion
+  are preserved using distinct test vocalizations; exact provenance is checked
+  separately in diagnostics.
+- New Config field `hearing_radius=8` replaces the old default hearing range 3.
+  The old constant `SIGNAL_RANGE=3` is retained for historical callers.
+  `signal_range` remains a deprecated optional constructor alias, now default
+  `None`. If supplied (including zero), it replaces the default `hearing_radius`
+  and the resolved radius is stored in Config. Conflicting nondefault values
+  are rejected. Saved v0.3 configurations containing `signal_range=3` still load
+  with radius 3. When changing a loaded legacy config, clear the alias explicitly:
+  `replace(old_config, signal_range=None, hearing_radius=8)`.
+- Aggregate columns and values are unchanged. Config hashes/metadata differ
+  because Config now includes hearing settings and the CLI version is 0.4.
+  Full auditory event payloads intentionally differ; they are not byte-compatible
+  with v0.3. The existing analysis code/data and preserved perception baseline
+  study are unchanged.
+
+`python3 -m experiments.auditory_demo` uses two stationary agents separated by
+5 cells, visual radius 2, hearing radius 8. The receiver cannot see the sender's
+cell. It receives no signal at tick 1, only
+`{"signal_id": 7, "source_direction": "E"}` at tick 2, and none at tick 3.
+The harness emits one known **meaningless** ID; this establishes a sensory
+mechanism, not learned listening, intentional communication, or language.
+
+A separate 10-tick CLI smoke run (evolution, LearningBrain, seed 0) ended with
+100 living agents, 0 births/deaths, and 99 emissions. Its 1,785 delivered records
+included 1,615 sources outside the receiver's visible tiles. All records were
+checked against the preceding tick's actual emissions for timing, range,
+self exclusion, and sensory-field privacy. Local diagnostic artifacts are
+`data/v04_auditory_smoke.csv` (plus metadata), `data/v04_auditory_smoke.jsonl`,
+`data/v04_auditory_smoke_validation.json`, and `data/v04_short_regression.json`.
+These short-run outputs are ignored by Git; the regression fixture and tests
+are included in the source tree.
+
+Hearing still uses nine nearby spatial buckets. A larger range entails more
+candidate signals and observation allocations; dense populations and full
+diagnostic serialization can be costly. No historical signal/agent storage or
+new performance guarantee is introduced.
+
+Possible later experiments, **not implemented**: distance-dependent reception
+probability; noisy direction; signal confusion; acoustic/phonological feature
+representations and greater confusion between similar sounds; intensity and
+approximate distance; obstacles/terrain attenuation; simultaneous-speaker
+masking; learned listening and signal selection; signal costs; repeated or
+sequential vocalizations; compositional signals; social learning,
+intergenerational transmission, and dialect formation. Any future auditory noise
+needs a separate named RNG stream. v0.5 learned-listening design should be
+reviewed before implementation; this release claims no emergence of semantics,
+culture, or language.
 
 ## Reproduction and energy
 
