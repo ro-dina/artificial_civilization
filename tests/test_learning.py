@@ -16,7 +16,7 @@ from agents.brain import Action, RandomBrain
 from agents.genome import Genome
 from agents.human import Human
 from agents.learning import LearningBrain, Physiology
-from agents.observation import HeardSignal, Observation, SourceDirection, TileObservation
+from agents.observation import AuditoryKind, AuditoryPercept, HeardSignal, Observation, SourceDirection, TileObservation
 from config import Config
 from experiments.learning_demo import run_demo
 from simulation.events import JSONLEventWriter
@@ -39,7 +39,8 @@ def learning_state(sim):
                asdict(h.brain._pending) if h.brain._pending is not None else None,
                h.brain.signal_rng.getstate(), h.brain.learning_updates,
                h.brain.exploratory_actions, h.brain.exploitative_actions,
-               h.brain.last_reward, h.brain.last_exploratory) for h in sim.agents),
+               h.brain.last_reward, h.brain.last_exploratory,
+               tuple(h.brain.auditory_memory._events), h.brain.auditory_memory._last_tick) for h in sim.agents),
     )
 
 
@@ -50,7 +51,8 @@ class LearningBrainTests(unittest.TestCase):
         reference = random.Random(42)
         human = Human(0, 0, 0, brain)
         empty = Observation(0, ())
-        noisy = Observation(900, (TileObservation(1, 0, 999, 999),), (HeardSignal(15, SourceDirection.W),))
+        noisy = Observation(900, (TileObservation(1, 0, 999, 999),),
+                            AuditoryPercept(AuditoryKind.IDENTIFIED, HeardSignal(15, SourceDirection.W)))
         for tick in range(100):
             action = reference.choice(tuple(Action))
             signal = reference.randrange(config.signal_vocab_size) if reference.random() < human.genome.signal_probability else None
@@ -175,12 +177,13 @@ class LearningBrainTests(unittest.TestCase):
         brain, human, _ = make_brain()
         self.assertIn(brain.choose_action(human, Observation(0, ())).action, brain.actions)
 
-    def test_signals_and_tick_numbers_do_not_enter_learning_state(self):
-        first, a, _ = make_brain(seed=10)
-        second, b, _ = make_brain(seed=10)
+    def test_signals_and_tick_numbers_do_not_enter_learning_state_when_disabled(self):
+        first, a, _ = make_brain(seed=10, learning_uses_auditory=False)
+        second, b, _ = make_brain(seed=10, learning_uses_auditory=False)
         for tick in range(20):
             empty = Observation(tick, ())
-            signals = Observation(tick + 1000, (), (HeardSignal(tick % 16, tuple(SourceDirection)[tick % 9]),))
+            signals = Observation(tick + 1000, (), AuditoryPercept(
+                AuditoryKind.IDENTIFIED, HeardSignal(tick % 16, tuple(SourceDirection)[tick % 9])))
             self.assertEqual(first.choose_action(a, empty), second.choose_action(b, signals))
             first.observe_outcome(Physiology.capture(a))
             second.observe_outcome(Physiology.capture(b))

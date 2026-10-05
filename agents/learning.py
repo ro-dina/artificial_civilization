@@ -8,13 +8,14 @@ from random import Random
 from typing import TYPE_CHECKING
 
 from agents.brain import Action, Decision
-from agents.observation import Observation
+from agents.auditory_memory import AuditoryFeature, AuditoryMemory
+from agents.observation import Observation, SILENCE
 from config import Config
 
 if TYPE_CHECKING:
     from agents.human import Human
 
-State = tuple[int, ...]
+State = tuple[int | AuditoryFeature, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,7 +39,7 @@ class Transition:
 
 
 class LearningBrain:
-    """Zero-prior Q values, constant epsilon exploration, and no signal features.
+    """Zero-prior Q values, constant epsilon exploration, and optional listening.
 
     The next observation arrives only at the next ordinary choose_action call.
     Surviving transitions are then updated; terminal outcomes update immediately.
@@ -66,6 +67,8 @@ class LearningBrain:
         self.exploitative_actions = 0
         self.last_exploratory: bool | None = None
         self.last_reward: float | None = None
+        self.learning_uses_auditory = config.learning_uses_auditory
+        self.auditory_memory = AuditoryMemory(config.auditory_memory_ticks)
 
     @property
     def memory_size(self) -> int:
@@ -75,7 +78,10 @@ class LearningBrain:
         return max(0, min(self.need_bins - 1, int(self.need_bins * value / limit)))
 
     def state(self, body: Physiology, observation: Observation) -> State:
-        """Three body bins and nearest-resource direction categories, nothing global."""
+        """Original body/visual features, optionally followed by one auditory feature.
+
+        This diagnostic preview never updates memory, Q rows, LRU order or RNG.
+        """
         directions = []
         for resource in ("food", "water"):
             nearest = min(
@@ -88,8 +94,18 @@ class LearningBrain:
             else:
                 directions.extend(((nearest.dx > 0) - (nearest.dx < 0),
                                    (nearest.dy > 0) - (nearest.dy < 0)))
-        return (self._bin(body.hunger, self.max_hunger), self._bin(body.thirst, self.max_thirst),
-                self._bin(body.energy, self.max_energy), *directions)
+        original = (self._bin(body.hunger, self.max_hunger), self._bin(body.thirst, self.max_thirst),
+                    self._bin(body.energy, self.max_energy), *directions)
+        if not self.learning_uses_auditory:
+            return original
+        return (*original, self.auditory_memory.feature(observation.auditory, observation.tick))
+
+    def auditory_diagnostics(self, tick: int) -> dict:
+        """Optional read-only record of memory and the feature used at this tick."""
+        return {"learning_uses_auditory": self.learning_uses_auditory,
+                "memory": tuple({"received_tick": event.received_tick, "age": tick - event.received_tick,
+                                 "percept": event.percept} for event in self.auditory_memory.events(tick)),
+                "feature": self.auditory_memory.feature(SILENCE, tick) if self.learning_uses_auditory else None}
 
     def action_values(self, body: Physiology, observation: Observation) -> tuple[float, ...]:
         """Read-only diagnostic; unseen states have all-zero values and are not stored."""
@@ -115,6 +131,9 @@ class LearningBrain:
         self._pending = None
 
     def choose_action(self, human: Human, observation: Observation) -> Decision:
+        if self._pending is not None and self._pending.reward is None:
+            raise RuntimeError("Learning requires a completed action outcome")
+        self.auditory_memory.update(observation.auditory, observation.tick)
         body = Physiology.capture(human)
         state = self.state(body, observation)
         if self._pending is not None:

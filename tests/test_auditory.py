@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from agents.genome import Genome
 from agents.learning import Physiology
-from agents.observation import HeardSignal, SourceDirection
+from agents.observation import HeardSignal, SILENCE, SourceDirection
 from config import Config
 from experiments.auditory_demo import run_demo
 from simulation.events import JSONLEventWriter
@@ -133,12 +133,13 @@ class AuditoryTests(unittest.TestCase):
         sim.step()
         events = [json.loads(line) for line in stream.getvalue().splitlines()]
         event = next(e for e in events if e["tick"] == 2 and e["agent_id"] == receiver.id)
-        self.assertEqual(events[0]["details"]["auditory_schema_version"], 2)
-        self.assertEqual(event["details"]["observation"]["signals"], [{"signal_id": 7, "source_direction": "E"}])
+        self.assertEqual(events[0]["details"]["auditory_schema_version"], 3)
+        self.assertEqual(event["details"]["observation"]["auditory"],
+                         {"kind": "IDENTIFIED", "signal": {"signal_id": 7, "source_direction": "E"}})
         self.assertEqual(event["details"]["auditory_diagnostics"], [{
             "signal_id": 7, "sender_id": sender.id, "sender_position": {"x": 6, "y": 1},
             "receiver_id": receiver.id, "receiver_position": {"x": 1, "y": 1},
-            "source_direction": "E", "chebyshev_distance": 5, "hearing_radius": 8,
+            "source_direction": "E", "chebyshev_distance": 5, "apparent_loudness": 1/36, "hearing_radius": 8,
             "inside_hearing_range": True, "emitted_tick": 1, "receiving_tick": 2,
         }])
         self.assertEqual(event["details"]["after"]["x"], 0)
@@ -177,9 +178,10 @@ class AuditoryTests(unittest.TestCase):
         for brain in ("random", "learning"):
             config = Config.evolution(brain=brain, world_width=5, world_height=5,
                                       initial_population=12, initial_food=20, initial_water=20,
-                                      min_reproductive_age=3, mutation_rate=0.5, random_seed=0)
+                                      min_reproductive_age=3, mutation_rate=0.5, random_seed=0,
+                                      learning_uses_auditory=False)
             a, b = Simulation(config), Simulation(config, event_sink=JSONLEventWriter(io.StringIO()))
-            with patch.object(a.communication, "hear", return_value=()):
+            with patch.object(a.communication, "perceive", return_value=SILENCE):
                 for _ in range(60):
                     a.step()
                     b.step()
@@ -188,7 +190,7 @@ class AuditoryTests(unittest.TestCase):
                         for h in b.agents:
                             obs = b.observe(h)
                             body = Physiology.capture(h)
-                            self.assertEqual(h.brain.state(body, obs), h.brain.state(body, replace(obs, signals=())))
+                            self.assertEqual(h.brain.state(body, obs), h.brain.state(body, replace(obs, auditory=SILENCE)))
             self.assertGreater(b.statistics.births, 0)
 
     def test_defaults_validation_and_old_config_alias(self):
@@ -214,7 +216,7 @@ class AuditoryTests(unittest.TestCase):
                                      "--csv", str(path)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             metadata = json.loads(path.with_suffix(".csv.metadata.json").read_text())
-            self.assertEqual(metadata["version"], "0.4")
+            self.assertEqual(metadata["version"], "0.5")
             self.assertEqual(metadata["config"]["hearing_radius"], 0)
             self.assertEqual(metadata["config"]["signal_vocab_size"], 40)
             missing = Path(directory) / "invalid.csv"
@@ -232,7 +234,8 @@ class HistoricalAuditoryControlTests(unittest.TestCase):
         for run in fixture["runs"]:
             for radius in (3, 8):
                 with self.subTest(mode=run["mode"], brain=run["brain"], radius=radius):
-                    settings = {**run["config"], "signal_range": None, "hearing_radius": radius}
+                    settings = {**run["config"], "signal_range": None, "hearing_radius": radius,
+                                "learning_uses_auditory": False}
                     sink = ActionDigest()
                     sim = Simulation(Config(**settings), event_sink=sink)
                     actual = capture(sim, fixture["ticks"])

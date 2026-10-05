@@ -62,13 +62,13 @@ class Simulation:
             for agent_id in range(config.initial_population)
         ]
         self._next_id = config.initial_population
-        self.communication = Communication(config.signal_vocab_size, config.hearing_radius)
+        self.communication = Communication(config.signal_vocab_size, config.hearing_radius, config.auditory_masking_ratio)
         self.tick = 0
         self.statistics = Statistics(tick=0, population=self.population,
                                      **summarize_genomes(self.agents), **summarize_learning(self.agents))
         if self.event_sink is not None or self.lineage_sink is not None:
             started = Event(0, "run_started", details={"config": asdict(config), "founder_genome": founder_genome,
-                                                      "auditory_schema_version": 2})
+                                                      "auditory_schema_version": 3})
             if self.event_sink is not None:
                 self.event_sink(started)
             if self.lineage_sink is not None:
@@ -101,8 +101,8 @@ class Simulation:
             TileObservation(x - human.x, y - human.y, tile.food, tile.water)
             for x, y, tile in self.world.nearby_tiles(human.x, human.y, human.genome.perception_radius)
         )
-        signals = self.communication.hear(human.id, human.x, human.y)
-        return Observation(self.tick, tiles, signals)
+        auditory = self.communication.perceive(human.id, human.x, human.y)
+        return Observation(self.tick, tiles, auditory)
 
     def _execute(self, human: Human, action: Action) -> tuple[bool, int, int]:
         """Return action success and the food/water units actually consumed."""
@@ -222,6 +222,8 @@ class Simulation:
                     details={
                         "before": before, "observation": observation,
                         "auditory_diagnostics": self.communication.diagnostics(human.id, start_x, start_y, self.tick),
+                        "auditory_resolution": self.communication.resolution_diagnostics(human.id, start_x, start_y),
+                        **({"auditory_learning": learner.auditory_diagnostics(self.tick)} if learner is not None else {}),
                         "action": decision.action.value, "action_succeeded": success,
                         "signal_emitted": decision.signal_id,
                         "food_consumed": food, "water_consumed": water,

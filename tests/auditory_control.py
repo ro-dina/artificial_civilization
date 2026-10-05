@@ -42,7 +42,7 @@ class ActionDigest:
     def __call__(self, event):
         if event.kind == "agent_step":
             details = {k: v for k, v in event.details.items()
-                       if k not in ("observation", "auditory_diagnostics")}
+                       if k not in ("observation", "auditory_diagnostics", "auditory_resolution", "auditory_learning")}
             self.digest.update(encoded((event.tick, event.agent_id, event.x, event.y, details)))
 
 

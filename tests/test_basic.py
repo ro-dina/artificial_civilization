@@ -302,7 +302,8 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(len(events), 3)
         detail = events[1]["details"]
         self.assertIn("tiles", detail["observation"])
-        self.assertIn("signals", detail["observation"])
+        self.assertIn("auditory", detail["observation"])
+        self.assertIn(detail["observation"]["auditory"]["kind"], ("SILENCE", "MASKED", "IDENTIFIED"))
         self.assertIn("action", detail)
         self.assertIsInstance(detail["signal_emitted"], int)
         self.assertEqual(detail["death_cause"], "starvation")

@@ -1,13 +1,13 @@
-# Artificial Civilization Simulation — v0.4
+# Artificial Civilization Simulation — v0.5
 
 A headless, standard-library-only artificial-life simulation for experiments in
-emergent behavior. v0.4 separates direct visual/resource perception from
-longer-range auditory perception of meaningless signals. It retains v0.3's
-optional individual learning and the existing survival, reproduction,
-inheritance, mutation, renewable resources, and lineage systems. Both controllers'
-decision rules are unchanged; auditory input is intentionally unused.
+emergent behavior. v0.5 adds receiver-side learned listening: distance-based
+auditory masking, finite memory of recent sounds, and one auditory Q-state
+feature. It retains separate visual/auditory perception and the existing
+survival, reproduction, inheritance, mutation, renewable resources, and lineage
+systems. Senders still emit randomly; RandomBrain remains the ecological control.
 
-**v0.4 does not implement language learning or meaningful communication.** Only
+**v0.5 implements learned listening, not language or shared communication.** Only
 LearningBrain learns; signals have no predefined meaning and neither controller
 intentionally communicates. Agriculture, economics, emotions, religion,
 technology, crafting, combat, culture, and civilization are not implemented.
@@ -27,23 +27,26 @@ python3 main.py --mode legacy --seed 42 --ticks 1000 --csv data/legacy.csv
 # Evolution preset: reproduction, energy metabolism, mutation, regeneration.
 python3 main.py --mode evolution --seed 42 --ticks 1000 --csv data/evolution.csv
 
-# Same ecology, different controllers. Random remains the default.
-python3 main.py --mode evolution --brain random --seed 0 --ticks 1000 --csv data/v03_random_seed_0.csv
-python3 main.py --mode evolution --brain learning --seed 0 --ticks 1000 --csv data/v03_learning_seed_0.csv
-python3 main.py --mode evolution --brain learning --seed 0 --ticks 5000 --csv data/v03_learning_seed_0_5000.csv
+# Short runs in the same ecology. Random remains the default.
+python3 main.py --mode evolution --brain random --seed 0 --ticks 100 --csv data/v05_random_smoke.csv
+python3 main.py --mode evolution --brain learning --seed 0 --ticks 100 --csv data/v05_listening_smoke.csv
+# Same physical auditory world, v0.4-equivalent cognitive encoder.
+python3 main.py --mode evolution --brain learning --no-learning-uses-auditory --seed 0 --ticks 100 --csv data/v05_ablation_smoke.csv
 
 # Hold perception fixed in every generation while the other traits evolve.
-python3 main.py --mode evolution --brain learning --fixed-perception-radius 2 --seed 0 --ticks 5000 --csv data/learning_fixed_p2_seed_0.csv
+python3 main.py --mode evolution --brain learning --fixed-perception-radius 2 --seed 0 --ticks 100 --csv data/v05_fixed_p2_smoke.csv
 
 # Controlled repeated experience, independent of evolutionary claims.
 python3 -m experiments.learning_demo
 
 # Three-tick sensory mechanism demonstration; no learned signal meanings.
 python3 -m experiments.auditory_demo
+python3 -m experiments.masking_demo
+python3 -m experiments.listening_demo
 
 # Short auditory diagnostics. Vocabulary 16 retains the v0.3 emission baseline.
 python3 main.py --mode evolution --brain learning --seed 0 --ticks 10 \
-  --hearing-radius 8 --events data/v04_auditory.jsonl
+  --hearing-radius 8 --events data/v05_auditory.jsonl
 # An explicit alternative vocabulary for future experiments (not a semantic map).
 python3 main.py --seed 0 --ticks 10 --signal-vocab-size 40
 
@@ -62,11 +65,10 @@ Generated files under `data/` are ignored
 by Git. No GUI, rendering, multiprocessing, or automatic detailed history exists.
 
 The complete suite includes simulation, learning, observational analysis, and
-historical controls. v0.4 adds 18 auditory tests to the existing 151 tests.
-Existing auditory assertions are migrated to the intentionally narrower sensory
-record; historical state digests are retained, not regenerated to fit the change.
-See [v0.4 verification](#v04-verification-and-compatibility) for the scope of
-the regression checks and the deliberate observation/configuration migration.
+historical controls. The pre-v0.5 suite of 169 tests was run before behavioral
+changes. Historical state digests are retained; auditory-ignore assertions now
+explicitly use the ablation. See [v0.5 verification](#v05-verification-and-compatibility)
+and the retained [v0.4 verification](#v04-verification-and-compatibility).
 
 ## Architecture
 
@@ -79,6 +81,7 @@ agents/human.py            Body, physiology, genome reference, lineage metadata
 agents/genome.py           Immutable Genome, inheritance, bounded mutation
 agents/brain.py            Brain protocol, Action, Decision, RandomBrain
 agents/learning.py         Bounded individual Q-learning and outcome snapshots
+agents/auditory_memory.py  Time-bounded non-silent auditory events and read-only encoder
 agents/observation.py      Immutable local sensory records
 systems/communication.py   Meaning-free signals with spatial lookup
 systems/reproduction.py    Eligibility, local partner lookup, costs, cooldown
@@ -91,10 +94,13 @@ tests/test_statistics.py    Living-genome summaries and observation-only verific
 tests/test_learning.py      v0.3 learning, isolation, replay, and control regression
 tests/test_fixed_perception.py Fixed-radius experiments, inheritance, and CLI validation
 tests/test_auditory.py       Hearing, privacy, timing, RNG and historical controls
+tests/test_listening.py     Masking, memory, listening, ablations and v0.5 fixture
 tests/auditory_control.py    Full ecological state/action digest helpers
 tests/fixtures/             Pre-v0.3 and pre-v0.4 deterministic control digests
 experiments/learning_demo.py Controlled repeated-resource learning validation
 experiments/auditory_demo.py Three-tick sensory mechanism check
+experiments/masking_demo.py Five deterministic sensory masking examples
+experiments/listening_demo.py Controlled delayed sound/action association and ablation
 experiments/analyze_fixed_perception.py Offline CSV aggregation and PNG plots
 tests/test_analyze_fixed_perception.py Analysis fixtures, missing data, and reproducibility
 requirements-analysis.txt   Optional pandas/matplotlib dependencies
@@ -103,8 +109,9 @@ requirements-analysis.txt   Optional pandas/matplotlib dependencies
 The existing architecture is extended rather than replaced. A brain implements
 `choose_action(human, observation) -> Decision`. It reads its own body and local
 observation and returns a decision without mutating the body. Observations contain
-`tick`, nearby `(dx, dy, food, water)` records, and heard
-`HeardSignal(signal_id, source_direction)` records. They contain no sender
+`tick`, nearby `(dx, dy, food, water)` records, and one resolved
+`AuditoryPercept`: SILENCE, MASKED, or IDENTIFIED with
+`HeardSignal(signal_id, source_direction)`. They contain no sender
 identity, exact sender displacement/distance, mutable world references,
 or distant resource information. This remains a programming contract, not a
 sandbox for untrusted custom brains.
@@ -140,12 +147,16 @@ Its state consists of:
   Nearest means Manhattan distance within the existing square perception window;
   ties use `(dy, dx)`. Each direction is `(sign(dx), sign(dy))`, including `(0, 0)`
   for the current cell. `(2, 2)` denotes no visible resource of that type.
+- When `learning_uses_auditory=True` (the v0.5 default), one nested feature for
+  the latest retained non-silent auditory event: ID, coarse direction, and age,
+  or MASKED and age, or SILENCE/NONE. See the exact encoding below. The disabled
+  condition keeps the original seven-integer state exactly.
 
 The encoder reads only the immutable Observation and the individual's body.
 Resources outside the inherited perception radius cannot affect these features.
 It ignores exact resource quantities beyond presence, exact distances after
-nearest selection, absolute position, tick, IDs, lineage, reproductive partners,
-and all heard signals. It has no world reference, map, pathfinding, or predefined
+nearest selection, absolute position, absolute tick, IDs, lineage, and reproductive
+partners. Auditory age is relative elapsed time. It has no world reference, map, pathfinding, or predefined
 direction-to-action preferences. Larger perception can supply additional local
 information, but receives no reward bonus or extra metabolic cost.
 
@@ -193,7 +204,8 @@ highest-valued tied actions. Epsilon and learning rate must be in `(0, 1]`;
 discount is in `[0, 1]`. Exploration remains enabled throughout life. Reproduction
 is an ordinary available action, with its unchanged physiological costs and no
 fitness reward. Signalling continues as independent random emission according
-to the inherited probability, and heard signals do not enter the learning state.
+to the inherited probability. Auditory input changes the state only in the enabled
+condition; it does not change reward or the emission mechanism.
 
 ## Physical rules and tick timing
 
@@ -235,7 +247,12 @@ Receivers cannot hear themselves. The signal persists for that tick if its sende
 dies. There is no signal cost or built-in semantic mapping; vocabulary sizes such
 as 4, 16, 256, and 4000 need no architectural change.
 
-## Visual and auditory perception (v0.4)
+## Visual and auditory perception (v0.4 baseline)
+
+The following section records the v0.4 mechanism and verification. v0.5 preserves
+its physical channel, timing, geometry, and privacy while adding perceptual
+masking and optional learned listening, documented in the next section. Statements
+about ignoring auditory input and identifying all candidates describe v0.4.
 
 The long-term question is: **How do environmental conditions,
 perceptual/cognitive traits, and social conditions affect the emergence and
@@ -400,9 +417,283 @@ approximate distance; obstacles/terrain attenuation; simultaneous-speaker
 masking; learned listening and signal selection; signal costs; repeated or
 sequential vocalizations; compositional signals; social learning,
 intergenerational transmission, and dialect formation. Any future auditory noise
-needs a separate named RNG stream. v0.5 learned-listening design should be
-reviewed before implementation; this release claims no emergence of semantics,
-culture, or language.
+needs a separate named RNG stream. The v0.5 extension below implements masking
+and learned listening; these baseline measurements remain historical records.
+
+## Learned listening, masking, and finite auditory memory (v0.5)
+
+The receiver can now associate an arbitrary sound with future experience through
+ordinary individual Q-learning. Senders still make independent random emissions
+using inherited `signal_probability` and random integer IDs. There is no learned
+production, receiver selection, communication reward, meaning dictionary, shared
+convention, teaching, imitation, identity recognition, language, or culture.
+
+The layers are deliberately separate:
+
+```text
+physical candidates within hearing_radius
+    -> distance-based apparent loudness
+    -> perceptual masking
+    -> one immutable resolved auditory percept
+    -> finite non-silent-event memory
+    -> one auditory Q-state feature
+    -> existing Q-learning and action selection
+```
+
+Future experiments can independently vary physical hearing, masking, memory,
+encoding, and cognitive access. Masking is neutral sensory physics before learning;
+thirst, hunger, reward, usefulness, familiarity, and Q values do not change which
+sound is identified or how long it is retained.
+
+### Configuration and masking
+
+| Setting | Default | Validation / role |
+| --- | ---: | --- |
+| `hearing_radius` | 8 | Existing nonnegative integer physical range; nonheritable |
+| `auditory_masking_ratio` | 3.0 | Finite number strictly greater than 1 |
+| `auditory_memory_ticks` | 4 | Integer at least 1; time horizon, not lifetime history |
+| `learning_uses_auditory` | True | Boolean; False preserves the v0.4 Q encoder |
+| `signal_vocab_size` | 16 | Existing positive integer; explicitly selectable as 40 or larger |
+
+The three new settings are Config parameters, not genome traits; no mutation,
+inheritance, or new biological cost is introduced. The loudness exponent is fixed
+at 2. All emitters have the same intensity. For Chebyshev distance d:
+
+```text
+L(d) = 1 / (d + 1)^2
+d:     0      1       2       3       4
+L:     1     1/4     1/9     1/16    1/25
+```
+
+This is abstract apparent loudness for competition, not accurate acoustic
+physics. Every external signal inside the existing inclusive hearing radius
+still physically arrives. Self and out-of-range signals cannot compete. The
+resolver finds the two strongest candidates in one scan:
+
+- No candidates: SILENCE.
+- One candidate: IDENTIFIED with its arbitrary signal ID and coarse direction.
+- At least two candidates: IDENTIFIED with the strongest only when
+  `L1 / L2 >= auditory_masking_ratio`; otherwise MASKED.
+
+Equal-distance candidates have ratio 1 and therefore mask each other, even with
+identical IDs. Sender IDs and traversal order cannot break a perceptual tie. Three
+or more speakers use exactly the same top-two rule; the resolver does not sum
+loudness or impose a special speaker-count threshold. Internally the ratio is
+computed as `(d2 + 1)^2 / (d1 + 1)^2`, algebraically identical to L1/L2 and avoiding
+intermediate reciprocal rounding. There are no stochastic draws, noise,
+obstacles, attenuation, variable volume, or intensity costs.
+
+`python3 -m experiments.masking_demo` verifies:
+
+| Example | Candidate distances | Dominance ratio | Percept |
+| --- | --- | ---: | --- |
+| A | 1 and 3 | 4 | Nearer ID identified |
+| B | 1 and 2 | 2.25 | MASKED |
+| C | 2 and 2 | 1 | MASKED |
+| D | 2 only | — | IDENTIFIED |
+| E | None | — | SILENCE |
+
+### Sensory record, memory, and exact Q feature
+
+`Observation.auditory` is an immutable/slotted tagged record:
+
+```python
+AuditoryPercept(kind=AuditoryKind.SILENCE, signal=None)
+AuditoryPercept(kind=AuditoryKind.MASKED, signal=None)
+AuditoryPercept(kind=AuditoryKind.IDENTIFIED,
+                signal=HeardSignal(signal_id, source_direction))
+```
+
+Tags are string enums, not reserved signal IDs. SILENCE means no external physical
+candidate arrived. MASKED means candidates arrived but identification failed;
+its direction is unknown and no ID/direction payload is permitted. IDENTIFIED
+uses the same v0.4 sign-sector compass directions, including SAME_CELL. The
+record has no speaker identity, position, dx/dy, distance, loudness, intensity,
+lineage, relationship, or semantic label. `Observation.signals` remains a
+read-only zero-or-one identified-sound view; use the tag to distinguish MASKED
+from SILENCE. The legacy `Communication.hear()` is a physical-candidate diagnostic
+view only; `Simulation.observe()` gives the Brain `Communication.perceive()`'s
+resolved result, never the complete candidate list.
+
+Each LearningBrain owns an `AuditoryMemory`. Raw entries are immutable
+`AuditoryEvent(received_tick, percept)` objects in a deque bounded by the horizon.
+It stores only IDENTIFIED and MASKED events, at most one per tick; silence does
+not add an entry or erase a still-recent event. Every ordinary decision expires
+entries whose `current_tick - received_tick >= auditory_memory_ticks`. Skipped
+tick numbers count as elapsed time. Age 0 is the current receiving tick; the
+default retains ages 0, 1, 2, 3 and forgets at age 4. Repeated non-silent observations
+at the same tick replace that tick's event rather than growing the deque;
+backward memory updates are rejected. No raw lifetime sequence is retained.
+
+For example, an identified ID 12 from E received at tick 100 survives SILENCE
+at ticks 101, 102, and 103 with ages 1, 2, and 3. At tick 104 it is forgotten.
+MASKED follows the same rule and can replace an older identified event as the
+latest event used by learning. Every newborn has empty auditory memory, empty
+Q rows, and no pending transition. None of these are inherited. RandomBrain
+allocates no auditory memory.
+
+The baseline encoder uses only the latest retained non-silent event:
+
+```text
+identified: (AuditoryKind.IDENTIFIED, signal_id, SourceDirection, age)
+masked:     (AuditoryKind.MASKED, age)
+empty:      (AuditoryKind.SILENCE,)
+
+original = (hunger_bin, thirst_bin, energy_bin,
+            food_dx_sign, food_dy_sign, water_dx_sign, water_dy_sign)
+enabled_state = (*original, auditory_feature)
+disabled_state = original
+```
+
+The original components are neither removed nor redefined. Raw past events
+remain available for later encoder experiments, but the complete sequence is
+not a Q key. With vocabulary 16, nine directions, and horizon 4 there are at
+most `1 + 4 + 16*9*4 = 581` auditory feature values. The existing 256-row Q-table
+limit still applies. This larger state space can fragment experience and cause
+LRU eviction; richer sensory input need not improve outcomes.
+
+Memory updates once at the ordinary `choose_action` call before deriving the
+next Q state. The preceding transition then uses that state in the existing
+discounted update; action selection, random emission, and outcome feedback retain
+their order. `state()` and `action_values()` are read-only previews of the supplied
+percept plus retained memory: no event insertion/expiration mutation, Q/LRU
+update, or RNG draws. Inspecting a future preview does not teach the brain.
+
+`learning_uses_auditory=False` excludes the entire auditory feature and returns
+the exact seven-integer v0.4 key. Physical delivery, masking, and raw short-term
+memory still operate. This is a cognitive-input ablation in the same sensory
+world, not a switch that makes the world silent. The CLI supports
+`--learning-uses-auditory` and `--no-learning-uses-auditory`; the horizon and
+masking ratio are programmatic Config settings.
+
+The reward formula remains exactly:
+
+```text
+r = (hunger_before - hunger_after) / max_hunger
+  + (thirst_before - thirst_after) / max_thirst
+  + (energy_after - energy_before) / max_energy
+```
+
+No reward is given for hearing, responding, approaching a speaker, identifying
+sounds, avoiding masking, or emitting. The same Q-learning discount may propagate
+later physiological reward through preceding actions; there is no sound-specific
+credit assignment or supervised label. Emission code and its independent RNG
+are unchanged and consult neither Q values nor auditory memory.
+
+### Controlled learned-listening result
+
+`python3 -m experiments.listening_demo` runs 300 six-action trials per condition
+in a 5×1 world with one learner, no reproduction and no age death. Between trials
+the harness places the receiver at x=2 with thirst 60 and one water unit at x=4
+or x=0 in alternating contexts. It presents arbitrary ID 7 or 12 from the same
+direction E using an external test emitter, only on the trial's first tick.
+Visual radius zero makes the two initial resource observations identical. The
+cue is remembered while later movement/drinking receives ordinary physiological
+feedback. The matched ablation uses the same physical cues and context schedule.
+
+The harness changes the environment/body between trials, as the original
+learning demo does. It never edits Q values, forces actions, supplies meaning
+labels to the brain, or changes rewards. Pending transitions persist across
+trial resets; this is a continuously learning intervention, not isolated episodic
+training or a natural ecological experiment.
+
+With seed 0, all initial Q values were zero. At the final starting-state probe,
+the enabled receiver's ID-7 MOVE_EAST value was **0.142586**, higher than every
+other action for that cue. In the last quarter it first moved east in **29/37**
+ID-7 trials, versus **0/38** ID-12 trials. ID-7 and ID-12 action values differ.
+The ablation has exactly identical probe values for both IDs because its encoder
+cannot distinguish them. Each condition completed **1,799 Q updates**.
+
+The enabled receiver consumed **69** water units (63 in ID-7 contexts, 6 in
+ID-12 contexts), versus **111** in the ablation (111 and 0). It did **not** learn
+the expected westward initial preference for ID 12; its final greedy action
+there was a blocked MOVE_NORTH. Thus the demo establishes a learned association
+with an arbitrary sound and a useful future action for one condition. It does
+not establish that listening is globally superior, that an ID means water,
+that production is intentional, or that a convention, language, or ecological
+fitness advantage emerged.
+
+### v0.5 verification and compatibility
+
+The unchanged v0.4 suite passed **169 tests before behavior changes**. The final
+suite passes **194 tests** (Python 3.11.9), including new masking, strict privacy,
+time/age expiration, masked memory, silence, boundedness, fresh offspring,
+unchanged reward/emission, cognitive ablation, logging/RNG isolation, and demos.
+The original v0.2 and v0.3 fixtures are unchanged. Tests that asserted auditory
+ignorance explicitly select the ablation; serialization assertions use the new
+tagged record. Unrelated biological tests retain their original assertions.
+
+Before implementation, additional seed-7, 80-tick, 12-founder renewable controls
+were frozen from v0.4 commit `ea53e96ed7d1eb00beea759002ca8f5c1551bf5d` in
+`tests/fixtures/v04_listening_control.json`. RandomBrain and disabled listening
+match every captured state and action/outcome digest: bodies/genomes, resources,
+signals, aggregate counters, Q values/LRU, pending transitions, and all retained
+RNG states. The existing seed-0 100-tick historical controls still match at
+hearing radii 3 and 8. No historical digest was regenerated to accommodate v0.5.
+Enabled listening has its own `v05_listening_seed7_tick80.json`, including raw
+auditory memory and complete resolved/diagnostic event hashes.
+
+| Seed-7 short control at tick 80 | Population | Births | Deaths |
+| --- | ---: | ---: | ---: |
+| RandomBrain (matches v0.4) | 39 | 32 | 5 |
+| LearningBrain, auditory disabled (matches v0.4) | 41 | 35 | 6 |
+| LearningBrain, auditory enabled (new v0.5 fixture) | 37 | 30 | 5 |
+
+Actual seed-0 100-tick CLI smoke runs also compared all **101 snapshots** of
+every aggregate against the archived v0.3 CSVs: Random and the learning ablation
+match exactly. The enabled run intentionally differs:
+
+| Seed-0 evolution smoke at tick 100 | Population | Births | Deaths | CLI seconds |
+| --- | ---: | ---: | ---: | ---: |
+| Random | 232 | 136 | 4 | 0.267 |
+| Learning ablation | 207 | 109 | 2 | 0.366 |
+| Learned listening | 206 | 108 | 2 | 0.386 |
+
+These are short mechanism checks, not comparative ecological evidence or large
+benchmarks. Local timings include startup/CSV and are not portable throughput
+guarantees. Masking scans only candidates in the existing spatial buckets, in
+linear candidate time with constant extra space. Raw memory uses O(horizon)
+space per learner; the Q-table cap is unchanged. Full diagnostic serialization
+does additional candidate scans and can be expensive when many sounds overlap.
+
+Detailed JSONL remains opt-in/streaming; the default stores no event history.
+`run_started.auditory_schema_version` is now **3**. The canonical observation
+serializes `auditory.kind` and its optional two-field `signal` only. Privileged
+`auditory_diagnostics` additionally records candidate loudness, alongside the
+existing identity/position/distance/timing fields. `auditory_resolution` records
+the strongest/runner-up loudness, dominance ratio, masking ratio, and resolved
+percept. Learning records add `auditory_learning` with the bounded memory,
+relative ages, and supplied feature (None for the ablation). All diagnostic
+payloads are built only for an enabled full event sink. Lineage-only logging
+does not construct them. No aggregate columns or inferred semantic counters
+were added; `mean_memory_size` still means Q-table rows, not auditory events.
+
+Intentional incompatibilities: LearningBrain's default now uses auditory input,
+so its Q keys and ecological trajectory may differ from v0.4. Loading an old
+Config alone now enables the new default; use
+`Config(**old_settings, learning_uses_auditory=False)` to replay old cognitive
+behavior. The third Observation constructor argument is now an AuditoryPercept;
+raw candidate tuples are rejected. The `.signals` read view can expose only one
+identified sound. Observation/event JSON and Config hashes/metadata change;
+CSV metric names remain compatible. Existing analysis inputs and the preserved
+perception baseline study have not been modified. Historical perception commands
+below explicitly disable auditory learning to keep their original protocol.
+
+Local verification artifacts (ignored by Git) are `data/v05_listening_demo.json`,
+`data/v05_masking_demo.json`, `data/v05_short_runs.json`,
+`data/v05_verification.json` (source hashes, test/control results, demos), the three
+`data/v05_*_smoke.csv` files and metadata, and short full auditory JSONL.
+The fixtures, demos, tests, and this documentation are retained in source.
+
+Possible later work, **documented only**: learned signal production or receiver
+selection; whispering/shouting or variable intensity; learned attention and
+need-dependent hearing; semantic memory; voice/speaker/kin recognition and
+names; signal sequences, compositionality, grammar; phonetic feature vectors
+and acoustic similarity/confusion; stochastic hearing; obstacles and terrain
+attenuation; cultural transmission, inherited learned knowledge, imitation,
+and teaching. The next design decision should follow review of this receiver
+mechanism. No v0.6 learned signaling or new 5000-tick multi-seed experiments
+were run.
 
 ## Reproduction and energy
 
@@ -518,7 +809,8 @@ still produces empty cells. Birth events record the fixed child trait. The CSV's
 distinguishes these experimental settings. Adding this config field changes
 configuration IDs even for the default `None`; it does not change default dynamics.
 
-The example above was verified through tick 5,000: population 899, 29,812 births,
+The historical v0.3 seed-0 fixed-radius-2 run (auditory input ignored) was
+verified through tick 5,000: population 899, 29,812 births,
 29,013 deaths, and highest generation 146. All 5,001 CSV snapshots (including tick
 zero) have perception mean/min/max equal to 2, while the other three traits vary.
 This single-seed check validates the constraint, not its ecological superiority.
@@ -636,7 +928,7 @@ Outputs in `analysis/evolving_perception/`:
 #### Record cohorts and compact lineages
 
 ```bash
-python3 main.py --mode evolution --brain learning --seed 0 --ticks 5000 \
+python3 main.py --mode evolution --brain learning --no-learning-uses-auditory --seed 0 --ticks 5000 \
   --csv data/evolving_seed_0.csv \
   --cohort-csv data/evolving_seed_0_cohorts.csv \
   --lineage-events data/evolving_seed_0_lineage.jsonl
@@ -810,7 +1102,7 @@ study is complete. Reusing these destinations would overwrite those runs:
 
 ```bash
 for seed in {0..9}; do
-  python3 main.py --mode evolution --brain learning --seed "$seed" --ticks 5000 \
+  python3 main.py --mode evolution --brain learning --no-learning-uses-auditory --seed "$seed" --ticks 5000 \
     --csv "data/cohort_replicates/evolving_seed_${seed}.csv" \
     --cohort-csv "data/cohort_replicates/evolving_seed_${seed}_cohorts.csv" \
     --lineage-events "data/cohort_replicates/evolving_seed_${seed}_lineage.jsonl"
@@ -1034,8 +1326,9 @@ Custom sinks can retain only births or sample observations. The default
 simulation stores neither events nor past bodies/genomes. CSV and JSONL writers
 use caller-owned streams and do not retain rows.
 
-## Baselines, performance, and scientific limitations
+## Recorded v0.3 baselines, performance, and scientific limitations
 
+These are preserved v0.3 results with auditory input ignored, not new v0.5 runs.
 Verification used Python 3.11.9 and the unchanged evolution preset, seed 0,
 100 founders, and no population safeguard or ecology tuning:
 
@@ -1142,5 +1435,5 @@ ten-seed cohort transition analysis are retained as the
 study is complete. Perception's causal role remains unresolved and is deferred
 until a future question requires it; additional perception experiments are not
 the current next task. Reuse the preserved results as a reference for subsequent
-development. Signal learning remains future work, and no extension should
+development. Learned signal production remains future work, and no extension should
 directly script farming, institutions, or other civilization outcomes.
