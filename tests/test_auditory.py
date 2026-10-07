@@ -216,7 +216,7 @@ class AuditoryTests(unittest.TestCase):
                                      "--csv", str(path)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             metadata = json.loads(path.with_suffix(".csv.metadata.json").read_text())
-            self.assertEqual(metadata["version"], "0.5")
+            self.assertEqual(metadata["version"], "0.6")
             self.assertEqual(metadata["config"]["hearing_radius"], 0)
             self.assertEqual(metadata["config"]["signal_vocab_size"], 40)
             missing = Path(directory) / "invalid.csv"
@@ -235,7 +235,7 @@ class HistoricalAuditoryControlTests(unittest.TestCase):
             for radius in (3, 8):
                 with self.subTest(mode=run["mode"], brain=run["brain"], radius=radius):
                     settings = {**run["config"], "signal_range": None, "hearing_radius": radius,
-                                "learning_uses_auditory": False}
+                                "learning_uses_auditory": False, "learning_controls_vocalization": False}
                     sink = ActionDigest()
                     sim = Simulation(Config(**settings), event_sink=sink)
                     actual = capture(sim, fixture["ticks"])

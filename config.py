@@ -65,6 +65,8 @@ LEARNING_NEED_BINS = 3
 AUDITORY_MEMORY_TICKS = 4
 AUDITORY_MASKING_RATIO = 3.0
 LEARNING_USES_AUDITORY = True
+LEARNING_CONTROLS_VOCALIZATION = True
+VOCAL_LEARNING_MEMORY_CAPACITY = 256
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,6 +128,8 @@ class Config:
     auditory_memory_ticks: int = AUDITORY_MEMORY_TICKS
     auditory_masking_ratio: float = AUDITORY_MASKING_RATIO
     learning_uses_auditory: bool = LEARNING_USES_AUDITORY
+    learning_controls_vocalization: bool = LEARNING_CONTROLS_VOCALIZATION
+    vocal_learning_memory_capacity: int = VOCAL_LEARNING_MEMORY_CAPACITY
 
     @classmethod
     def evolution(cls, **overrides) -> "Config":
@@ -145,17 +149,20 @@ class Config:
             "signal_range", "hearing_radius", "random_seed", "max_ticks", "status_interval",
             "min_reproductive_age", "max_reproductive_age", "reproduction_radius",
             "reproduction_cooldown", "food_capacity", "water_capacity", "max_population",
-            "learning_memory_capacity", "learning_need_bins", "fixed_perception_radius", "auditory_memory_ticks",
+            "learning_memory_capacity", "vocal_learning_memory_capacity", "learning_need_bins",
+            "fixed_perception_radius", "auditory_memory_ticks",
         }
         positive_fields = {
             "world_width", "world_height", "max_hunger", "max_thirst",
             "max_age", "signal_vocab_size", "status_interval",
             "reproduction_energy_cost", "max_energy", "food_capacity", "water_capacity",
-            "learning_rate", "learning_epsilon", "learning_memory_capacity", "learning_need_bins", "auditory_memory_ticks",
+            "learning_rate", "learning_epsilon", "learning_memory_capacity", "vocal_learning_memory_capacity",
+            "learning_need_bins", "auditory_memory_ticks",
         }
         optional_fields = {"max_age", "max_reproductive_age", "food_capacity", "water_capacity", "max_population",
                            "fixed_perception_radius", "signal_range"}
-        boolean_fields = {"reproduction_enabled", "energy_depletion_lethal", "learning_uses_auditory"}
+        boolean_fields = {"reproduction_enabled", "energy_depletion_lethal", "learning_uses_auditory",
+                          "learning_controls_vocalization"}
         for field in fields(self):
             name, value = field.name, getattr(self, field.name)
             if name == "brain":

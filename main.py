@@ -17,16 +17,19 @@ from simulation.statistics import CSVStatisticsWriter
 
 def main() -> None:
     defaults = Config()
-    parser = argparse.ArgumentParser(description="Artificial Civilization v0.5: headless artificial life")
+    parser = argparse.ArgumentParser(description="Artificial Civilization v0.6: headless artificial life")
     parser.add_argument("--mode", choices=("legacy", "evolution"), default="legacy")
     parser.add_argument("--brain", choices=("random", "learning"), default=defaults.brain)
     parser.add_argument("--learning-uses-auditory", action=argparse.BooleanOptionalAction,
                         default=defaults.learning_uses_auditory,
-                        help="enable learned listening; --no-learning-uses-auditory is the v0.4 cognitive control")
+                        help="enable auditory Q-state features; combine both --no-learning-* flags for the historical control")
+    parser.add_argument("--learning-controls-vocalization", action=argparse.BooleanOptionalAction,
+                        default=defaults.learning_controls_vocalization,
+                        help="enable Vocal Q; --no-learning-controls-vocalization preserves v0.5 random emission")
     parser.add_argument("--hearing-radius", type=int, default=defaults.hearing_radius,
                         help="perfect auditory range in cells (independent of visual perception)")
     parser.add_argument("--signal-vocab-size", type=int, default=defaults.signal_vocab_size,
-                        help="meaningless integer signal types; 16 preserves the v0.3 emission baseline")
+                        help="meaningless integer signal types; 16 retains the historical vocabulary")
     parser.add_argument("--fixed-perception-radius", type=int, default=defaults.fixed_perception_radius,
                         help="fix the genome's perception radius for founders and all descendants")
     parser.add_argument("--seed", type=int, default=defaults.random_seed)
@@ -45,7 +48,8 @@ def main() -> None:
                          initial_population=args.population, status_interval=args.status_every, brain=args.brain,
                          fixed_perception_radius=args.fixed_perception_radius,
                          hearing_radius=args.hearing_radius, signal_vocab_size=args.signal_vocab_size,
-                         learning_uses_auditory=args.learning_uses_auditory)
+                         learning_uses_auditory=args.learning_uses_auditory,
+                         learning_controls_vocalization=args.learning_controls_vocalization)
     except ValueError as error:
         parser.error(str(error))
     metadata_path = args.csv.with_suffix(args.csv.suffix + ".metadata.json") if args.csv else None
@@ -85,7 +89,7 @@ def main() -> None:
             args.csv.parent.mkdir(parents=True, exist_ok=True)
             csv_writer = CSVStatisticsWriter(
                 stack.enter_context(args.csv.open("w", newline="", encoding="utf-8")), metadata=metadata)
-            metadata_path.write_text(json.dumps({**metadata, "version": "0.5", "python": platform.python_version(),
+            metadata_path.write_text(json.dumps({**metadata, "version": "0.6", "python": platform.python_version(),
                                                  "config": asdict(config)}, indent=2) + "\n", encoding="utf-8")
         sim = Simulation(config, event_sink=event_sink, cohort_sink=cohort_sink, lineage_sink=lineage_sink)
         if csv_writer is not None:
@@ -94,7 +98,8 @@ def main() -> None:
                        if config.fixed_perception_radius is not None else "")
         print(f"mode={args.mode} brain={config.brain} seed={config.random_seed}{fixed_label} "
               f"hearing_radius={config.hearing_radius} signal_vocab_size={config.signal_vocab_size} "
-              f"learning_uses_auditory={config.learning_uses_auditory}")
+              f"learning_uses_auditory={config.learning_uses_auditory} "
+              f"learning_controls_vocalization={config.learning_controls_vocalization}")
         last_status_tick = None
         for _ in range(config.max_ticks):
             if sim.population == 0:

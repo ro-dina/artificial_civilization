@@ -19,7 +19,8 @@ CUES = (7, 12)
 
 
 def run_condition(uses_auditory: bool, trials: int, ticks_per_trial: int) -> dict:
-    cfg = Config(brain="learning", learning_uses_auditory=uses_auditory, random_seed=0,
+    cfg = Config(brain="learning", learning_uses_auditory=uses_auditory,
+                 learning_controls_vocalization=False, random_seed=0,
                  world_width=5, world_height=1, initial_population=1, initial_food=0,
                  initial_water=0, perception_radius=0, signal_probability=0,
                  hunger_per_tick=0, thirst_per_tick=1, max_age=None)

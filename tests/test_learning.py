@@ -190,8 +190,9 @@ class LearningBrainTests(unittest.TestCase):
         self.assertEqual(first._values, second._values)
 
     def test_signal_emission_does_not_shift_exploration_stream(self):
-        first, a, _ = make_brain(seed=10, signal_probability=0)
-        second, b, _ = make_brain(seed=10, signal_probability=1, signal_vocab_size=4000)
+        first, a, _ = make_brain(seed=10, signal_probability=0, learning_controls_vocalization=False)
+        second, b, _ = make_brain(seed=10, signal_probability=1, signal_vocab_size=4000,
+                                  learning_controls_vocalization=False)
         for _ in range(30):
             quiet = first.choose_action(a, Observation(0, ()))
             loud = second.choose_action(b, Observation(0, ()))

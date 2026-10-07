@@ -160,6 +160,7 @@ class Simulation:
             previous_updates = learner.learning_updates if learner is not None else 0
             observation = self.observe(human)
             if self.event_sink is not None:
+                previous_vocal_updates = learner.vocal_learning_updates if learner is not None else 0
                 start_x, start_y = human.x, human.y
                 before = {"age": human.age, "hunger": human.hunger,
                           "thirst": human.thirst, "energy": human.energy}
@@ -224,6 +225,9 @@ class Simulation:
                         "auditory_diagnostics": self.communication.diagnostics(human.id, start_x, start_y, self.tick),
                         "auditory_resolution": self.communication.resolution_diagnostics(human.id, start_x, start_y),
                         **({"auditory_learning": learner.auditory_diagnostics(self.tick)} if learner is not None else {}),
+                        **({"vocal_learning": {**learner.vocal_diagnostics(),
+                                               "updates_this_turn": learner.vocal_learning_updates - previous_vocal_updates}}
+                           if learner is not None else {}),
                         "action": decision.action.value, "action_succeeded": success,
                         "signal_emitted": decision.signal_id,
                         "food_consumed": food, "water_consumed": water,

@@ -1,15 +1,17 @@
-# Artificial Civilization Simulation — v0.5
+# Artificial Civilization Simulation — v0.6
 
 A headless, standard-library-only artificial-life simulation for experiments in
-emergent behavior. v0.5 adds receiver-side learned listening: distance-based
-auditory masking, finite memory of recent sounds, and one auditory Q-state
-feature. It retains separate visual/auditory perception and the existing
-survival, reproduction, inheritance, mutation, renewable resources, and lineage
-systems. Senders still emit randomly; RandomBrain remains the ecological control.
+emergent behavior. v0.6 adds learned vocalization selection through a second,
+independent Vocal Q head in LearningBrain. Physical actions and vocal choices
+occur in the same turn and receive the same existing physiological reward.
+The v0.5 masking, auditory memory and learned listening remain intact, as do
+survival, reproduction, inheritance, mutation, resources and lineage systems.
+RandomBrain remains the ecological control; a sender ablation preserves v0.5
+random emissions exactly.
 
-**v0.5 implements learned listening, not language or shared communication.** Only
-LearningBrain learns; signals have no predefined meaning and neither controller
-intentionally communicates. Agriculture, economics, emotions, religion,
+**v0.6 implements learnable vocal choices, not language or shared communication.**
+Signals have no predefined meaning. Agents cannot select receivers or observe
+whether they were heard. There are no communication rewards. Agriculture, economics, emotions, religion,
 technology, crafting, combat, culture, and civilization are not implemented.
 Renewable food is an environmental process, not farming. Higher-level phenomena
 remain research questions; there are no scripted civilization stages or outcomes.
@@ -28,13 +30,15 @@ python3 main.py --mode legacy --seed 42 --ticks 1000 --csv data/legacy.csv
 python3 main.py --mode evolution --seed 42 --ticks 1000 --csv data/evolution.csv
 
 # Short runs in the same ecology. Random remains the default.
-python3 main.py --mode evolution --brain random --seed 0 --ticks 100 --csv data/v05_random_smoke.csv
-python3 main.py --mode evolution --brain learning --seed 0 --ticks 100 --csv data/v05_listening_smoke.csv
-# Same physical auditory world, v0.4-equivalent cognitive encoder.
-python3 main.py --mode evolution --brain learning --no-learning-uses-auditory --seed 0 --ticks 100 --csv data/v05_ablation_smoke.csv
+python3 main.py --mode evolution --brain random --seed 0 --ticks 100 --csv data/v06_random_smoke.csv
+python3 main.py --mode evolution --brain learning --seed 0 --ticks 100 --csv data/v06_vocal_smoke.csv
+# v0.5-equivalent listening with random production.
+python3 main.py --mode evolution --brain learning --no-learning-controls-vocalization --seed 0 --ticks 100 --csv data/v06_sender_control.csv
+# Original visual encoder and random production.
+python3 main.py --mode evolution --brain learning --no-learning-uses-auditory --no-learning-controls-vocalization --seed 0 --ticks 100 --csv data/v06_both_controls.csv
 
 # Hold perception fixed in every generation while the other traits evolve.
-python3 main.py --mode evolution --brain learning --fixed-perception-radius 2 --seed 0 --ticks 100 --csv data/v05_fixed_p2_smoke.csv
+python3 main.py --mode evolution --brain learning --fixed-perception-radius 2 --seed 0 --ticks 100 --csv data/v06_fixed_p2_smoke.csv
 
 # Controlled repeated experience, independent of evolutionary claims.
 python3 -m experiments.learning_demo
@@ -43,10 +47,13 @@ python3 -m experiments.learning_demo
 python3 -m experiments.auditory_demo
 python3 -m experiments.masking_demo
 python3 -m experiments.listening_demo
+python3 -m experiments.vocal_learning_demo
+# Initial zero-reward tied policy + one short seed for the four ablations.
+python3 -m experiments.vocal_verification
 
-# Short auditory diagnostics. Vocabulary 16 retains the v0.3 emission baseline.
+# Short auditory diagnostics. Vocabulary 16 retains the historical repertoire.
 python3 main.py --mode evolution --brain learning --seed 0 --ticks 10 \
-  --hearing-radius 8 --events data/v05_auditory.jsonl
+  --hearing-radius 8 --events data/v06_auditory.jsonl
 # An explicit alternative vocabulary for future experiments (not a semantic map).
 python3 main.py --seed 0 --ticks 10 --signal-vocab-size 40
 
@@ -65,9 +72,10 @@ Generated files under `data/` are ignored
 by Git. No GUI, rendering, multiprocessing, or automatic detailed history exists.
 
 The complete suite includes simulation, learning, observational analysis, and
-historical controls. The pre-v0.5 suite of 169 tests was run before behavioral
-changes. Historical state digests are retained; auditory-ignore assertions now
-explicitly use the ablation. See [v0.5 verification](#v05-verification-and-compatibility)
+historical controls. The pre-v0.6 suite of 194 tests was run before changes.
+Historical state digests are retained; historical learned-brain controls now
+explicitly disable learned production. See [v0.6 verification](#v06-verification-and-compatibility),
+[v0.5 verification](#v05-verification-and-compatibility)
 and the retained [v0.4 verification](#v04-verification-and-compatibility).
 
 ## Architecture
@@ -80,7 +88,7 @@ world/world.py             Grid, generation, movement, consumption, regeneration
 agents/human.py            Body, physiology, genome reference, lineage metadata
 agents/genome.py           Immutable Genome, inheritance, bounded mutation
 agents/brain.py            Brain protocol, Action, Decision, RandomBrain
-agents/learning.py         Bounded individual Q-learning and outcome snapshots
+agents/learning.py         Independent bounded Physical Q and Vocal Q heads
 agents/auditory_memory.py  Time-bounded non-silent auditory events and read-only encoder
 agents/observation.py      Immutable local sensory records
 systems/communication.py   Meaning-free signals with spatial lookup
@@ -95,12 +103,15 @@ tests/test_learning.py      v0.3 learning, isolation, replay, and control regres
 tests/test_fixed_perception.py Fixed-radius experiments, inheritance, and CLI validation
 tests/test_auditory.py       Hearing, privacy, timing, RNG and historical controls
 tests/test_listening.py     Masking, memory, listening, ablations and v0.5 fixture
+tests/test_vocalization.py  Dual heads, shared reward, RNG isolation, controls and v0.6 fixture
 tests/auditory_control.py    Full ecological state/action digest helpers
 tests/fixtures/             Pre-v0.3 and pre-v0.4 deterministic control digests
 experiments/learning_demo.py Controlled repeated-resource learning validation
 experiments/auditory_demo.py Three-tick sensory mechanism check
 experiments/masking_demo.py Five deterministic sensory masking examples
 experiments/listening_demo.py Controlled delayed sound/action association and ablation
+experiments/vocal_learning_demo.py Repeated physiological reward / arbitrary vocal preferences
+experiments/vocal_verification.py Initial tied policy and short 2x2 descriptive checks
 experiments/analyze_fixed_perception.py Offline CSV aggregation and PNG plots
 tests/test_analyze_fixed_perception.py Analysis fixtures, missing data, and reproducibility
 requirements-analysis.txt   Optional pandas/matplotlib dependencies
@@ -160,11 +171,12 @@ partners. Auditory age is relative elapsed time. It has no world reference, map,
 direction-to-action preferences. Larger perception can supply additional local
 information, but receives no reward bonus or extra metabolic cost.
 
-Memory is an individual `OrderedDict` from state tuples to action-value lists,
+Physical Q memory is an individual `OrderedDict` from state tuples to action-value lists,
 bounded to `learning_memory_capacity=256` states. Each row has seven action values,
 or eight when reproduction is enabled. Access during learning/action selection
-updates recency; the least recently used row is evicted at capacity. One pending
-transition stores the preceding state, action, body snapshot, and reward. No
+updates recency; the least recently used row is evicted at capacity. Each enabled
+head has its own pending transition containing state, action, body snapshot and
+reward. Vocal Q has a separate bounded table, detailed below. No
 lifetime history is retained. Diagnostic reads do not allocate rows or consume
 randomness. **Every newborn starts with empty learned memory and zero updates.**
 Only the unchanged four genome traits are inherited; learning rate, exploration,
@@ -203,9 +215,10 @@ uniformly among all available actions; otherwise choose uniformly among the
 highest-valued tied actions. Epsilon and learning rate must be in `(0, 1]`;
 discount is in `[0, 1]`. Exploration remains enabled throughout life. Reproduction
 is an ordinary available action, with its unchanged physiological costs and no
-fitness reward. Signalling continues as independent random emission according
-to the inherited probability. Auditory input changes the state only in the enabled
-condition; it does not change reward or the emission mechanism.
+fitness reward. RandomBrain and the sender-ablation LearningBrain signal using
+the inherited probability. By default LearningBrain instead selects SILENCE or
+a signal with Vocal Q; it never gates that choice with `signal_probability`.
+Auditory input changes both heads' state only in the listening-enabled condition.
 
 ## Physical rules and tick timing
 
@@ -421,6 +434,10 @@ needs a separate named RNG stream. The v0.5 extension below implements masking
 and learned listening; these baseline measurements remain historical records.
 
 ## Learned listening, masking, and finite auditory memory (v0.5)
+
+This section preserves the v0.5 receiver baseline and its historical results.
+In v0.6, use `learning_controls_vocalization=False` to retain this sender protocol;
+the receiver mechanism below is unchanged.
 
 The receiver can now associate an arbitrary sound with future experience through
 ordinary individual Q-learning. Senders still make independent random emissions
@@ -695,6 +712,262 @@ and teaching. The next design decision should follow review of this receiver
 mechanism. No v0.6 learned signaling or new 5000-tick multi-seed experiments
 were run.
 
+## Learned vocalization selection (v0.6)
+
+LearningBrain now selects two concurrent components from one encoded state:
+
+```text
+                         state
+                       /       \
+              Physical Q       Vocal Q
+                  |               |
+           physical action     vocal action
+                  +-------+-------+
+                          |
+              ordinary action + physiology
+                          |
+                 one existing body reward
+                  +-------+-------+
+             Physical update   Vocal update
+```
+
+A physical action is never replaced by speaking. Moving, eating, drinking,
+waiting and reproducing can each accompany a vocal action. There is no speaking
+cost, delay, receiver targeting, knowledge of delivery, or new biological rule.
+
+### Configuration, representation and bounded heads
+
+| New setting | Default | Validation / role |
+| --- | ---: | --- |
+| `learning_controls_vocalization` | True | Boolean; nonheritable; LearningBrain only |
+| `vocal_learning_memory_capacity` | 256 | Positive integer; independent LRU state-row cap |
+
+Physical action order and indices remain N, S, E, W, EAT, DRINK, WAIT, followed
+by REPRODUCE only when enabled. Physical Q remains the original
+`_values: OrderedDict[State, list[float]]`, with 7 or 8 values per row and the
+unchanged `learning_memory_capacity=256`. Vocal Q is separately
+`_vocal_values: OrderedDict[State, list[float]]`, with vocabulary+1 values per row.
+There is no physical×vocal Cartesian product and no shared eviction pool.
+Both tables move rows to the most-recent end during action selection/updates,
+evicting the oldest row at their own capacity. Diagnostic probes do neither.
+Newborns receive two empty tables, no pending transitions, fresh private RNGs,
+and zero updates. Neither table nor auditory memory is inherited.
+
+The frozen/slotted production record is:
+
+```python
+VocalAction(kind=VocalKind.SILENCE, signal_id=None)
+VocalAction(kind=VocalKind.SIGNAL, signal_id=arbitrary_integer)
+```
+
+It is distinct from an incoming `AuditoryPercept`. SILENCE has no fake integer
+ID. Enabled brains enumerate index 0 as SILENCE and index i+1 as signal i.
+Vocabulary sizes 4, 16, 40, 256 therefore give 5, 17, 41, 257 choices; integer
+neighbors have no acoustic similarity. `Decision(action, signal_id=None)`
+keeps its existing constructor and fields. Its read-only `vocal_action` property
+provides the explicit tagged view of the concurrent production component.
+
+Both heads receive the **same state object**, encoded once per turn: the
+original seven body/visual integers, optionally plus the v0.5 latest retained
+auditory feature. No sender identity, intended receiver, communication-success
+flag, or additional social feature enters either state. Hearing radius 8,
+Chebyshev geometry, loudness `1/(d+1)^2`, masking ratio 3, coarse directions,
+privacy, and the four-tick non-silent memory are unchanged.
+
+All unseen Vocal Q values are zero, including SILENCE. Vocal choice reuses
+`learning_epsilon=0.2`: one private random draw selects exploration, which is
+uniform over all choices; otherwise a uniform random choice among maximum-valued
+indices breaks ties. There is no preferred ID or SILENCE prior. Physical epsilon
+selection is unchanged. The vocal head reuses alpha 0.2 and discount 0.9.
+
+### Independent sender/receiver controls and RNG
+
+| Condition | `learning_uses_auditory` | `learning_controls_vocalization` | Mechanism |
+| --- | --- | --- | --- |
+| A | False | False | Visual/body learning, random production; historical control |
+| B | True | False | v0.5 learned listening, random production |
+| C | False | True | Learned production, auditory feature excluded |
+| D | True | True | Learned listening and production; v0.6 LearningBrain default |
+
+Neither flag is heritable. RandomBrain ignores both learning flags and retains
+its original draws/action ordering. Sender OFF does not disable reception,
+masking, memory or receiver learning. Example ablation flags:
+
+```bash
+# B: preserve v0.5 sender behavior
+python3 main.py --mode evolution --brain learning --no-learning-controls-vocalization --seed 0 --ticks 100
+# C: learn production while excluding auditory features
+python3 main.py --mode evolution --brain learning --no-learning-uses-auditory --seed 0 --ticks 100
+```
+
+Learned production is the only emission path when enabled: its chosen signal
+emits, and SILENCE emits nothing. **It does not consult inherited
+`signal_probability`.** The trait is retained unchanged for RandomBrain and
+sender-OFF controls, where the exact v0.5 independent emission gate and uniform
+signal-ID choice still apply.
+
+Simulation still supplies each brain `Random(f"{seed}:brain:{id}")`. LearningBrain
+preserves the original single `getrandbits(64)` construction draw as `signal_seed`.
+The legacy `signal_rng = Random(signal_seed)` is unchanged. Enabled brains also
+construct `vocal_rng = Random(f"{signal_seed}:vocal-choice")`, without drawing
+from either historical stream. Disabled brains allocate no vocal RNG/action rows.
+The original brain RNG continues to select physical actions; the dedicated vocal
+RNG performs only vocal epsilon/choice draws. Enabling Vocal Q therefore cannot
+shift physical draws merely through its extra random choices. Later auditory
+states/actions/ecology may differ when listening is ON. No global random state
+or hearing-delivery RNG is used.
+
+### Shared reward, transitions and timing
+
+The simulator's tick order is unchanged. At the next ordinary observation,
+memory is updated and the current state encoded. The previous physical
+transition is updated and a physical choice made; the enabled vocal head
+independently updates its previous transition and makes its choice from that
+same state. These private head operations finish before physical execution.
+Physical execution is followed by post-action emission, ordinary physiology,
+death evaluation, and immutable body feedback. Newborn timing and regeneration
+are unchanged. A signal from tick t is available only during tick t+1, expires
+after that receiving phase, excludes its sender, and survives that sender's death.
+
+`_pending` and `_vocal_pending` are separate `Transition` objects sharing the
+same immutable `before` snapshot/state. Outcome feedback computes exactly once:
+
+```text
+r = (hunger_before - hunger_after) / max_hunger
+  + (thirst_before - thirst_after) / max_thirst
+  + (energy_after - energy_before) / max_energy
+Qv(s,v) += alpha * (r + gamma * max_v' Qv(s_next,v') - Qv(s,v))
+```
+
+The identical scalar is attached to both transitions. Living updates wait for
+the next actual observation; death immediately updates both with bootstrap zero.
+The last living turn remains pending at a finite cutoff. No additional future
+observation or sound-specific temporal mechanism is introduced.
+
+**This is coarse shared credit, not causal attribution.** DRINK+SIGNAL_12 can
+give both selected choices positive reward because the body benefited from
+drinking. It does not show that SIGNAL_12 caused that benefit. There is no reward
+for being heard, matching an ID, receiver behavior, social proximity, reduced
+masking, conventions, or communication. Feedback contains only body values and
+liveness; the sender receives neither delivery status nor receiver outcomes.
+A state-dependent vocal preference is an arbitrary policy association. Signal
+semantics and a shared communication convention would require separate evidence.
+
+### Diagnostics, initial activity and controlled result
+
+CSV columns are unchanged: existing learning metrics refer to **Physical Q**,
+and `signals_emitted` counts actual non-silent emissions only. Opt-in events
+already suffice to validate the new mechanism without expanding aggregate CSVs.
+Each learner's `agent_step.details.vocal_learning` records learned/random-control
+path, tagged selected action, epsilon branch (None in random control), cumulative
+vocal updates, updates during this turn, vocal memory size, branch counts, and
+selected pre-outcome Q value (None in random control). Existing `action` and
+`learning` record physical choice, branch, reward, updates and table size.
+Full Q tables are never serialized per turn. Payloads are built only for a full
+event sink; diagnostic reads draw no RNG and change no Q/LRU/memory/body state.
+
+Zero tied values mean the initial policy is uniform over SILENCE plus all IDs.
+With vocabulary 16, expected initial emission probability is **16/17≈94.12%**,
+much higher than the historical 10% random gate. A controlled seed-0 check of
+1,000 identical-state, zero-reward decisions measured **954 emitted / 46 silent
+(95.4%)**. Q values stay zero throughout this measurement; it is not a 1,000-tick
+evolution run. No silence bias, probability gate or activity tuning was added.
+
+`python3 -m experiments.vocal_learning_demo` runs 600 ordinary one-agent,
+one-cell decisions, alternating two distinguishable body/resource contexts:
+(hunger 60, thirst 0, local food 1) and (hunger 0, thirst 60, local water 1),
+energy 100. The harness resets the body/resources between trials but never
+edits Q, forces actions or changes rewards. Pending transitions persist across
+resets. There is **no receiver**; listening is OFF to isolate production.
+
+Seed 0 started with all values zero. Final probe maxima were arbitrary
+**SIGNAL_15** in context A and **SIGNAL_5** in context B, with different vocal
+value rows, 599 updates in each head and two rows per table. The body consumed
+243 food and 50 water units. This demonstrates state-dependent Qv associations
+under shared physiological reward. It does not establish signal meaning,
+causality, receiver benefit, a convention or stable behavior in free ecology.
+No preferred ID is coded; other seeds are free to produce different results.
+
+### v0.6 verification and compatibility
+
+Before edits, all **194 tests passed in 58.544 s** on Python 3.11.9 at source
+commit `02aaf3169e879c9582f40ced83720d27a411dd4c`. Their fixture hashes and the
+complete old listening-demo result were saved before implementation. After changes,
+all **236 tests pass** (194 existing + 42 new, 71.409 s in the recorded run). New tests
+cover concurrent actions, reproduction/newborns, timing/silence, state/privacy,
+independent LRU/epsilon, bootstrap/terminal updates, shared reward, sender/receiver
+ablations, full dual-head replay, RNG/logging/CSV isolation and diagnostics.
+
+All four historical JSON fixtures remain byte-identical. RandomBrain and
+sender-OFF controls match the old v0.2/v0.3/v0.4 state/action digests. Listening-ON,
+sender-OFF matches the full v0.5 80-tick seed-7 state/memory/Q/LRU/pending/RNG and
+event digests: population 37, births 30, deaths 5. The event comparison projects
+out only the two new Config fields and the new `vocal_learning` diagnostic; it
+retains every old event field and every original state assertion. Historical
+tests explicitly select sender OFF rather than replacing their fixture values.
+The updated CLI version assertion is intentionally 0.6.
+
+The v0.5 listening demo explicitly keeps sender learning OFF. Its entire result
+matches the pre-change result, apart from the two new Config fields: ID-7 E value
+0.14258632186131284, water 69 versus 111 in the auditory ablation, and 1,799 updates
+per condition. `v06_vocal_seed7_tick80.json` is a separate enabled-vocal fixture
+with complete dual-head/memory/RNG/event hashes. Logging/extra probes/CSV are
+checked against a nonlogging replay at every tick; global random state is intact.
+The v0.6 seed-7 80-tick fixture ends with population 32, births 30 and deaths 10;
+this enabled-sender divergence from v0.5 is intentional. Actual CLI RandomBrain,
+both-OFF learning, and sender-OFF/listening-ON runs each match **all 101 aggregate
+snapshots** of their archived v0.5 100-tick CSVs, comparing every statistics
+column and excluding only identifying metadata/config hashes.
+
+One seed-0, 100-tick evolution check per condition, with unchanged ecological
+parameters and streaming diagnostics:
+
+| Condition | Population | Births | Deaths | Signals | MASKED / all observations | Physical updates | Vocal updates | Mean physical / vocal rows (living) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| A: both OFF | 207 | 109 | 2 | 1,405 | 51.82% | 13,718 | 0 | 19.04 / — |
+| B: listening ON | 206 | 108 | 2 | 1,406 | 52.80% | 13,726 | 0 | 44.60 / — |
+| C: production ON | 207 | 109 | 2 | 13,074 | 80.65% | 13,718 | 13,718 | 19.04 / 19.04 |
+| D: both ON | 207 | 110 | 3 | 13,004 | 82.09% | 13,563 | 13,563 | 27.78 / 27.78 |
+
+Denominators are actual agent observations, including silence and dying actors,
+excluding newborns during their birth tick. Update counts include deceased
+learners; mean rows refer only to current living learners. This checks mechanism
+accounting and acoustic saturation, not fitness, significance or communication.
+The higher masking in this short run was recorded without ecological tuning.
+Local times with diagnostics were approximately 0.56–1.32 s per condition,
+partly concurrent with tests; these are not controlled throughput benchmarks.
+
+Intentional compatibility changes: LearningBrain now defaults to learned
+production; its acoustic/learning trajectory may change. Loading old settings
+without an explicit sender flag enables the new default. Use sender OFF for
+v0.5 replay and both flags OFF for older visual-learning controls. Config hashes,
+version metadata and detailed events gain fields; aggregate column names/meanings,
+Decision's constructor, RandomBrain draws and biological rules remain unchanged.
+The v0.4/v0.5 sections above and perception results below are historical records,
+not claims about the new default.
+
+Space per enabled learner scales with physical-cap×physical-actions plus
+vocal-cap×(vocab+1) plus auditory-horizon, two pending experiences and a private RNG. Vocal max/tie
+scans cost O(vocab) per decision; large vocabularies can be expensive despite
+bounded state rows. More auditory states may fragment both tables, and high vocal
+activity can increase candidate scans/masking. No dead heads or lifetime history
+are retained. No capacity/cost mechanism or optimization changes were added.
+
+Local verification artifacts, ignored by Git: `data/v06_verification.json`,
+`data/v06_short_checks.json`, `data/v06_vocal_learning_demo.json`,
+`data/v06_listening_demo.json`, short smoke CSV/metadata and diagnostic JSONL.
+No new 5,000-tick or multi-seed ecology experiment was run. Absence of meaningful
+or stable vocal structure remains a valid baseline result.
+
+Future work, **document only**: a finite shared processing budget could make
+physical action, vocal production, auditory processing and memory/attention
+compete, perhaps affecting difficult movement, simultaneous speakers, stopping
+or approaching to communicate. This version assumes concurrency without extra
+cost. No budget, signal cost, intensity choice, communication/social reward,
+identity/targeting, imitation, teaching, inherited learning, acoustic features,
+sequences, composition, semantics, grammar or culture is implemented. Further
+scientific design should follow review of these mechanism results.
+
 ## Reproduction and energy
 
 Types `0` and `1` are compatibility categories only. There is no pregnancy,
@@ -754,7 +1027,7 @@ variation option. The four traits are unchanged from v0.2:
 | Trait | Founder value | Permitted values | Effect |
 | --- | --- | --- | --- |
 | `perception_radius` | `Config.perception_radius` (2) | Integers 0–8 | Local resource observation radius |
-| `signal_probability` | `Config.signal_probability` (0.1) | 0–1 | Random emission probability |
+| `signal_probability` | `Config.signal_probability` (0.1) | 0–1 | Random emission probability; no gate in learned-production mode |
 | `hunger_multiplier` | 1 | 0.5–1.5 | Multiplies the environmental hunger cost |
 | `thirst_multiplier` | 1 | 0.5–1.5 | Multiplies the environmental thirst cost |
 
@@ -928,7 +1201,7 @@ Outputs in `analysis/evolving_perception/`:
 #### Record cohorts and compact lineages
 
 ```bash
-python3 main.py --mode evolution --brain learning --no-learning-uses-auditory --seed 0 --ticks 5000 \
+python3 main.py --mode evolution --brain learning --no-learning-uses-auditory --no-learning-controls-vocalization --seed 0 --ticks 5000 \
   --csv data/evolving_seed_0.csv \
   --cohort-csv data/evolving_seed_0_cohorts.csv \
   --lineage-events data/evolving_seed_0_lineage.jsonl
@@ -1102,7 +1375,7 @@ study is complete. Reusing these destinations would overwrite those runs:
 
 ```bash
 for seed in {0..9}; do
-  python3 main.py --mode evolution --brain learning --no-learning-uses-auditory --seed "$seed" --ticks 5000 \
+  python3 main.py --mode evolution --brain learning --no-learning-uses-auditory --no-learning-controls-vocalization --seed "$seed" --ticks 5000 \
     --csv "data/cohort_replicates/evolving_seed_${seed}.csv" \
     --cohort-csv "data/cohort_replicates/evolving_seed_${seed}_cohorts.csv" \
     --lineage-events "data/cohort_replicates/evolving_seed_${seed}_lineage.jsonl"
@@ -1229,10 +1502,12 @@ randomness. Each child receives a fresh `brain:<new_id>` stream. There is no use
 of global random state, wall clocks, or Python hash randomization in dynamics.
 Logging and statistics consume no randomness.
 
-LearningBrain uses its private `brain:<id>` stream for exploration and tied
-choices. At construction it derives a separate emission RNG from one 64-bit draw
-of that stream. Changing signal probability or vocabulary therefore cannot shift
-its future action-choice draws. RandomBrain's original RNG consumption is
+LearningBrain uses its private `brain:<id>` stream for physical exploration and
+tied choices. It preserves the original one 64-bit construction draw and the
+derived legacy emission RNG. The enabled Vocal Q uses a separately labeled
+`vocal-choice` RNG derived from that same scalar, without extra historical draws.
+Changing probability or vocabulary cannot shift physical draws through emission
+or vocal exploration, though later heard states can change behavior. RandomBrain's original RNG consumption is
 untouched. The two controllers consume randomness differently: their individual
 trajectories are expected to differ even under the same seed. Changes in behavior
 can also change later population, resource, and partner draws; separate streams
@@ -1277,10 +1552,10 @@ but consumers should read named columns rather than fixed positions.
 | `mean_hunger_multiplier`, `min_hunger_multiplier`, `max_hunger_multiplier` | Current living agents' hunger multipliers |
 | `mean_thirst_multiplier`, `min_thirst_multiplier`, `max_thirst_multiplier` | Current living agents' thirst multipliers |
 | `learning_agents` | Currently living LearningBrain individuals, including newborns |
-| `total_learning_updates` | Cumulative Q updates, including those by agents that later died |
-| `mean_learning_updates` | Mean lifetime update count among living LearningBrain agents only |
-| `mean_memory_size` | Mean stored state rows among living LearningBrain agents only |
-| `exploratory_actions`, `exploitative_actions` | Cumulative branch counts for LearningBrain decisions, including deceased agents |
+| `total_learning_updates` | Cumulative Physical Q updates, including those by agents that later died |
+| `mean_learning_updates` | Mean lifetime Physical Q update count among living LearningBrain agents only |
+| `mean_memory_size` | Mean Physical Q state rows among living LearningBrain agents only |
+| `exploratory_actions`, `exploitative_actions` | Cumulative physical-choice branch counts, including deceased learners |
 
 Learning means are `None`/empty CSV cells when there are no living learners;
 RandomBrain runs have zero learning counts and empty learning means. Newborns
@@ -1435,5 +1710,6 @@ ten-seed cohort transition analysis are retained as the
 study is complete. Perception's causal role remains unresolved and is deferred
 until a future question requires it; additional perception experiments are not
 the current next task. Reuse the preserved results as a reference for subsequent
-development. Learned signal production remains future work, and no extension should
-directly script farming, institutions, or other civilization outcomes.
+development. v0.6 adds learnable production without a communication objective;
+learned preferences do not establish semantics or conventions. Further changes
+must not directly script farming, institutions, or other civilization outcomes.

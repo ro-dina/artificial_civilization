@@ -23,10 +23,42 @@ class Action(str, Enum):
     REPRODUCE = "reproduce"
 
 
+class VocalKind(str, Enum):
+    SILENCE = "SILENCE"
+    SIGNAL = "SIGNAL"
+
+
+@dataclass(frozen=True, slots=True)
+class VocalAction:
+    """A production choice, distinct from the receiver's AuditoryPercept."""
+
+    kind: VocalKind = VocalKind.SILENCE
+    signal_id: int | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.kind, VocalKind):
+            raise ValueError("kind must be a VocalKind")
+        if self.kind is VocalKind.SIGNAL:
+            if type(self.signal_id) is not int or self.signal_id < 0:
+                raise ValueError("SIGNAL requires a nonnegative integer signal ID")
+        elif self.signal_id is not None:
+            raise ValueError("SILENCE cannot carry a signal ID")
+
+    @property
+    def label(self) -> str:
+        return "SILENCE" if self.kind is VocalKind.SILENCE else f"SIGNAL_{self.signal_id}"
+
+
 @dataclass(frozen=True, slots=True)
 class Decision:
     action: Action
     signal_id: int | None = None
+
+    @property
+    def vocal_action(self) -> VocalAction:
+        """Explicit view preserving the existing Decision(action, signal_id) API."""
+        return (VocalAction() if self.signal_id is None
+                else VocalAction(VocalKind.SIGNAL, self.signal_id))
 
 
 class Brain(Protocol):

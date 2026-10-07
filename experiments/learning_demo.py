@@ -15,7 +15,8 @@ from simulation.simulation import Simulation
 
 
 def run_demo(trials: int = 400) -> dict:
-    config = Config(brain="learning", random_seed=0, world_width=1, world_height=1,
+    config = Config(brain="learning", learning_controls_vocalization=False,
+                    random_seed=0, world_width=1, world_height=1,
                     initial_population=1, initial_food=0, initial_water=1, perception_radius=0,
                     hunger_per_tick=0, thirst_per_tick=1, max_age=None)
     counts = Counter()

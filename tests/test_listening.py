@@ -40,11 +40,21 @@ def channel_percept(sources, ratio=3):
     return channel.perceive(0, 0, 0)
 
 
-def capture_listening(config, ticks):
+def capture_listening(config, ticks, *, v05_schema=False):
     """Version-specific full state/memory and resolved/privileged event digests."""
     events = hashlib.sha256()
     def sink(event):
-        events.update(encoded(asdict(event)))
+        record = asdict(event)
+        if v05_schema:
+            # Only project newly added metadata/diagnostics out of historical
+            # event serialization. Every v0.5 field and all state hashes remain.
+            if event.kind == "run_started":
+                for name in ("learning_controls_vocalization", "vocal_learning_memory_capacity"):
+                    record["details"]["config"].pop(name)
+            record["details"].pop("vocal_learning", None)
+        events.update(encoded(record))
+    if v05_schema and config.learning_controls_vocalization:
+        raise ValueError("Historical event projection requires the v0.5 sender control")
     sim = Simulation(config, event_sink=sink)
     trajectory = hashlib.sha256()
     for tick in range(ticks + 1):
@@ -243,8 +253,9 @@ class ListeningBrainTests(unittest.TestCase):
             self.assertEqual(neutral.last_reward, 0)
 
     def test_emission_stream_is_independent_of_q_values_auditory_and_body(self):
-        first, a, _ = make_brain(seed=19, signal_probability=0.8)
-        second, b, _ = make_brain(seed=19, signal_probability=0.8, learning_uses_auditory=False)
+        first, a, _ = make_brain(seed=19, signal_probability=0.8, learning_controls_vocalization=False)
+        second, b, _ = make_brain(seed=19, signal_probability=0.8, learning_uses_auditory=False,
+                                  learning_controls_vocalization=False)
         reference = random.Random()
         reference.setstate(first.signal_rng.getstate())
         for tick in range(30):
@@ -312,7 +323,8 @@ class ListeningIntegrationTests(unittest.TestCase):
         fixture = json.loads((Path(__file__).parent / "fixtures/v04_listening_control.json").read_text())
         for run in fixture["runs"]:
             sink = ActionDigest()
-            sim = Simulation(Config(**run["config"], learning_uses_auditory=run["config"]["brain"] == "random"), event_sink=sink)
+            sim = Simulation(Config(**run["config"], learning_uses_auditory=run["config"]["brain"] == "random",
+                                    learning_controls_vocalization=False), event_sink=sink)
             actual = capture(sim, fixture["ticks"])
             for key in actual:
                 self.assertEqual(actual[key], run[key], (run["config"]["brain"], key))
@@ -320,7 +332,8 @@ class ListeningIntegrationTests(unittest.TestCase):
 
     def test_v05_enabled_memory_percepts_learning_and_rng_match_separate_fixture(self):
         fixture = json.loads((Path(__file__).parent / "fixtures/v05_listening_seed7_tick80.json").read_text())
-        actual = capture_listening(Config(**fixture["config"]), fixture["ticks"])
+        actual = capture_listening(Config(**fixture["config"], learning_controls_vocalization=False),
+                                   fixture["ticks"], v05_schema=True)
         self.assertEqual(actual, fixture["result"])
 
     def test_cli_auditory_ablation_and_both_demonstrations(self):
