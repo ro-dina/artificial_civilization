@@ -556,7 +556,7 @@ class VocalIntegrationTests(unittest.TestCase):
                                     capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             metadata = json.loads(path.with_suffix(".csv.metadata.json").read_text())
-            self.assertEqual(metadata["version"], "0.6")
+            self.assertEqual(metadata["version"], "0.6.1")
             self.assertIs(metadata["config"]["learning_controls_vocalization"], False)
             self.assertIs(metadata["config"]["learning_uses_auditory"], True)
         result = subprocess.run([sys.executable, "-m", "experiments.vocal_learning_demo", "--trials", "20"],

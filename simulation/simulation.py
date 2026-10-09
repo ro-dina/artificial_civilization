@@ -11,6 +11,7 @@ from agents.learning import LearningBrain, Physiology
 from agents.observation import Observation, TileObservation
 from config import Config, REPRODUCTIVE_TYPES
 from simulation.cohorts import CohortSink, PerceptionCohorts
+from simulation.communication_observer import CommunicationObserver, CommunicationSink
 from simulation.events import Event, EventSink
 from simulation.statistics import Statistics, summarize_genomes, summarize_learning
 from systems.communication import Communication
@@ -28,12 +29,14 @@ MOVEMENT = {
 class Simulation:
     def __init__(self, config: Config, *, event_sink: EventSink | None = None,
                  cohort_sink: CohortSink | None = None, lineage_sink: EventSink | None = None,
+                 communication_sink: CommunicationSink | None = None,
                  brain_factory: Callable[[Random, Config], Brain] | None = None) -> None:
         self.config = config
         self.event_sink = event_sink
         self.cohort_sink = cohort_sink
         self.lineage_sink = lineage_sink
         self.cohorts = PerceptionCohorts() if cohort_sink is not None else None
+        self.communication_observer = CommunicationObserver(config, communication_sink) if communication_sink is not None else None
         if brain_factory is None:
             brain_factory = LearningBrain if config.brain == "learning" else RandomBrain
         self.brain_factory = brain_factory
@@ -84,13 +87,14 @@ class Simulation:
         cls, seed: int | None = None, *, config: Config | None = None,
         event_sink: EventSink | None = None,
         cohort_sink: CohortSink | None = None, lineage_sink: EventSink | None = None,
+        communication_sink: CommunicationSink | None = None,
         brain_factory: Callable[[Random, Config], Brain] | None = None,
     ) -> Simulation:
         settings = config if config is not None else Config()
         if seed is not None:
             settings = replace(settings, random_seed=seed)
         return cls(settings, event_sink=event_sink, cohort_sink=cohort_sink,
-                   lineage_sink=lineage_sink, brain_factory=brain_factory)
+                   lineage_sink=lineage_sink, communication_sink=communication_sink, brain_factory=brain_factory)
 
     @property
     def population(self) -> int:
@@ -145,6 +149,8 @@ class Simulation:
         if self.cohorts is not None:
             self.cohorts.begin_tick()
         food_regenerated, water_regenerated = self.world.regenerate(self.config, self._food_rng, self._water_rng)
+        if self.communication_observer is not None:
+            self.communication_observer.begin_tick(self.agents)
         order = list(self.agents)
         self._order_rng.shuffle(order)
         if self.config.reproduction_enabled:
@@ -169,6 +175,8 @@ class Simulation:
                 raise ValueError("Brains must return a Decision containing an Action")
             if decision.signal_id is not None:
                 self.communication.validate_signal(decision.signal_id)
+            if self.communication_observer is not None:
+                self.communication_observer.decision(human, observation, decision)
             if self.cohorts is not None:
                 self.cohorts.action(human, decision.action)
 

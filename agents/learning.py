@@ -38,7 +38,36 @@ class Transition:
     reward: float | None = None
 
 
-class LearningBrain:
+class PrimitiveStateEncoder:
+    """Shared read-only body/visual encoder, with no tables, memory or RNG."""
+
+    def __init__(self, config: Config) -> None:
+        self.need_bins = config.learning_need_bins
+        self.max_hunger = config.max_hunger
+        self.max_thirst = config.max_thirst
+        self.max_energy = config.max_energy
+
+    def _bin(self, value: float, limit: float) -> int:
+        return max(0, min(self.need_bins - 1, int(self.need_bins * value / limit)))
+
+    def primitive_state(self, body: Physiology, observation: Observation) -> tuple[int, ...]:
+        directions = []
+        for resource in ("food", "water"):
+            nearest = min(
+                (tile for tile in observation.tiles if getattr(tile, resource) > 0),
+                key=lambda tile: (abs(tile.dx) + abs(tile.dy), tile.dy, tile.dx),
+                default=None,
+            )
+            if nearest is None:
+                directions.extend((2, 2))
+            else:
+                directions.extend(((nearest.dx > 0) - (nearest.dx < 0),
+                                   (nearest.dy > 0) - (nearest.dy < 0)))
+        return (self._bin(body.hunger, self.max_hunger), self._bin(body.thirst, self.max_thirst),
+                self._bin(body.energy, self.max_energy), *directions)
+
+
+class LearningBrain(PrimitiveStateEncoder):
     """Independent bounded physical/vocal Q heads with coarse shared body reward.
 
     The next observation arrives only at the next ordinary choose_action call.
@@ -109,28 +138,17 @@ class LearningBrain:
                 "exploitative_actions": self.vocal_exploitative_actions,
                 "selected_q_value": self.last_vocal_value}
 
-    def _bin(self, value: float, limit: float) -> int:
-        return max(0, min(self.need_bins - 1, int(self.need_bins * value / limit)))
+    @property
+    def decision_state(self) -> State | None:
+        """The immutable already-encoded pending state; a read never recomputes it."""
+        return self._pending.state if self._pending is not None else None
 
     def state(self, body: Physiology, observation: Observation) -> State:
         """Original body/visual features, optionally followed by one auditory feature.
 
         This diagnostic preview never updates memory, Q rows, LRU order or RNG.
         """
-        directions = []
-        for resource in ("food", "water"):
-            nearest = min(
-                (tile for tile in observation.tiles if getattr(tile, resource) > 0),
-                key=lambda tile: (abs(tile.dx) + abs(tile.dy), tile.dy, tile.dx),
-                default=None,
-            )
-            if nearest is None:
-                directions.extend((2, 2))  # Distinct from the nine sign directions.
-            else:
-                directions.extend(((nearest.dx > 0) - (nearest.dx < 0),
-                                   (nearest.dy > 0) - (nearest.dy < 0)))
-        original = (self._bin(body.hunger, self.max_hunger), self._bin(body.thirst, self.max_thirst),
-                    self._bin(body.energy, self.max_energy), *directions)
+        original = self.primitive_state(body, observation)
         if not self.learning_uses_auditory:
             return original
         return (*original, self.auditory_memory.feature(observation.auditory, observation.tick))

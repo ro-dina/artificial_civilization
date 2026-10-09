@@ -10,6 +10,7 @@ from pathlib import Path
 
 from config import Config
 from simulation.cohorts import CSVCohortWriter
+from simulation.communication_observer import COLUMNS, DENSITY_RADIUS, SCHEMA_VERSION, CSVCommunicationWriter
 from simulation.events import Event, JSONLEventWriter
 from simulation.simulation import Simulation
 from simulation.statistics import CSVStatisticsWriter
@@ -17,7 +18,7 @@ from simulation.statistics import CSVStatisticsWriter
 
 def main() -> None:
     defaults = Config()
-    parser = argparse.ArgumentParser(description="Artificial Civilization v0.6: headless artificial life")
+    parser = argparse.ArgumentParser(description="Artificial Civilization v0.6.1: headless artificial life")
     parser.add_argument("--mode", choices=("legacy", "evolution"), default="legacy")
     parser.add_argument("--brain", choices=("random", "learning"), default=defaults.brain)
     parser.add_argument("--learning-uses-auditory", action=argparse.BooleanOptionalAction,
@@ -40,6 +41,7 @@ def main() -> None:
     parser.add_argument("--events", type=Path, help="opt-in detailed JSONL (overwrites destination)")
     parser.add_argument("--cohort-csv", type=Path, help="opt-in per-tick perception cohorts with metadata sidecar")
     parser.add_argument("--lineage-events", type=Path, help="opt-in compact founder/birth/death JSONL")
+    parser.add_argument("--communication-csv", type=Path, help="opt-in compact decision/perception CSV with metadata sidecar")
     args = parser.parse_args()
     try:
         if args.mode == "evolution":
@@ -54,10 +56,12 @@ def main() -> None:
         parser.error(str(error))
     metadata_path = args.csv.with_suffix(args.csv.suffix + ".metadata.json") if args.csv else None
     cohort_metadata_path = args.cohort_csv.with_suffix(args.cohort_csv.suffix + ".metadata.json") if args.cohort_csv else None
+    communication_metadata_path = args.communication_csv.with_suffix(args.communication_csv.suffix + ".metadata.json") if args.communication_csv else None
     paths = [path.resolve() for path in (args.csv, args.events, metadata_path, args.cohort_csv,
-                                       cohort_metadata_path, args.lineage_events) if path is not None]
+                                       cohort_metadata_path, args.lineage_events, args.communication_csv,
+                                       communication_metadata_path) if path is not None]
     if len(set(paths)) != len(paths):
-        parser.error("CSV, metadata, and events must use different files (including cohort/lineage outputs)")
+        parser.error("CSV, metadata, and events must use different files (including communication/cohort/lineage outputs)")
     config_id = hashlib.sha256(json.dumps(asdict(config), sort_keys=True).encode()).hexdigest()
     metadata = {"mode": args.mode, "brain": config.brain, "seed": config.random_seed, "config_id": config_id}
 
@@ -66,6 +70,11 @@ def main() -> None:
         lineage_sink = None
         cohort_sink = None
         csv_writer = None
+        communication_sink = None
+        if args.communication_csv:
+            args.communication_csv.parent.mkdir(parents=True, exist_ok=True)
+            communication_sink = CSVCommunicationWriter(
+                stack.enter_context(args.communication_csv.open("w", newline="", encoding="utf-8")))
         if args.events:
             args.events.parent.mkdir(parents=True, exist_ok=True)
             event_sink = JSONLEventWriter(stack.enter_context(args.events.open("w", encoding="utf-8")))
@@ -89,9 +98,10 @@ def main() -> None:
             args.csv.parent.mkdir(parents=True, exist_ok=True)
             csv_writer = CSVStatisticsWriter(
                 stack.enter_context(args.csv.open("w", newline="", encoding="utf-8")), metadata=metadata)
-            metadata_path.write_text(json.dumps({**metadata, "version": "0.6", "python": platform.python_version(),
+            metadata_path.write_text(json.dumps({**metadata, "version": "0.6.1", "python": platform.python_version(),
                                                  "config": asdict(config)}, indent=2) + "\n", encoding="utf-8")
-        sim = Simulation(config, event_sink=event_sink, cohort_sink=cohort_sink, lineage_sink=lineage_sink)
+        sim = Simulation(config, event_sink=event_sink, cohort_sink=cohort_sink, lineage_sink=lineage_sink,
+                         communication_sink=communication_sink)
         if csv_writer is not None:
             csv_writer.write(sim.statistics)
         fixed_label = (f" fixed_perception_radius={config.fixed_perception_radius}"
@@ -114,6 +124,22 @@ def main() -> None:
             sim.print_status()
         if lineage_sink is not None:
             lineage_sink(Event(sim.tick, "run_finished", details={"population": sim.population}))
+        if communication_metadata_path is not None:
+            root = Path(__file__).parent
+            sources = ("main.py", "config.py", "agents/brain.py", "agents/learning.py", "agents/observation.py",
+                       "agents/auditory_memory.py", "simulation/simulation.py", "simulation/communication_observer.py",
+                       "systems/communication.py", "systems/reproduction.py", "agents/genome.py", "agents/human.py",
+                       "world/world.py", "simulation/statistics.py")
+            communication_metadata_path.write_text(json.dumps({**metadata, "version": "0.6.1",
+                "python": platform.python_version(), "schema_version": SCHEMA_VERSION, "columns": COLUMNS,
+                "config": asdict(config), "final_tick": sim.tick, "statistics": asdict(sim.statistics),
+                "density_radius": DENSITY_RADIUS,
+                "density_definition": "Other existing agents within Chebyshev radius at tick start, before any actions; includes subsequent deaths and excludes newborns. Privileged, not Brain-visible.",
+                "timing": "No decisions at tick 0. Row t combines the actual resolved reception of t-1 emissions with that actor's same-turn choices at t; body/age are pre-action.",
+                "state_definition": "LearningBrain's already encoded pending state; RandomBrain/custom body-visual diagnostics use the same primitive encoder, not a cognitive state of those brains.",
+                "sampling": "None; every ordinary actor decision, including dying actors, excluding newborns during birth tick.",
+                "source_sha256": {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in sources}},
+                indent=2) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

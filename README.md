@@ -1,4 +1,4 @@
-# Artificial Civilization Simulation — v0.6
+# Artificial Civilization Simulation — v0.6.1
 
 A headless, standard-library-only artificial-life simulation for experiments in
 emergent behavior. v0.6 adds learned vocalization selection through a second,
@@ -15,6 +15,220 @@ whether they were heard. There are no communication rewards. Agriculture, econom
 technology, crafting, combat, culture, and civilization are not implemented.
 Renewable food is an environmental process, not farming. Higher-level phenomena
 remain research questions; there are no scripted civilization stages or outcomes.
+
+## Communication Analysis — v0.6.1
+
+v0.6.1 adds optional **observational recording and offline analysis** to v0.6.
+It changes no action selection, Q updates, LRU order, pending transitions,
+auditory memory/masking, RNG draws, biology, resources, rewards or defaults.
+There are no speaking costs, communication rewards or capacity mechanisms.
+This release does **not** implement language or establish shared meanings.
+The [verification report](docs/communication_analysis_v061.md) records the full
+test/regression checks, synthetic controls, pilot results and performance.
+
+```bash
+# One compact row for each actor decision; aggregate CSV remains unchanged.
+python3 main.py --mode evolution --brain learning --seed 0 --ticks 1000 \
+  --csv data/communication/D_seed_0_statistics.csv \
+  --communication-csv data/communication/D_seed_0_communication.csv
+
+# Optional analysis dependencies, separate from the standard-library simulator.
+python3 -m pip install -r requirements-analysis.txt
+python3 -m experiments.analyze_communication
+# Direct invocation also works from the repository root.
+python3 experiments/analyze_communication.py --data-dir data/communication \
+  --output-dir analysis/communication --window-size 100 \
+  --permutations 100 --analysis-seed 0
+
+# Explicit NEW short pilot; this command runs simulations, unlike the analyser.
+# Refuses existing destinations; unchanged evolution ecology, all four conditions.
+python3 -m experiments.communication_pilot --ticks 1000 --seeds 0 1 2
+```
+
+Recording is disabled unless `--communication-csv PATH` or a programmatic
+`communication_sink` is supplied. The writer streams without sampling, retaining
+no agents, observations, histories or Q tables. Its `.csv.metadata.json` sidecar
+contains the effective Config, simulation seed/config hash, final tick/statistics,
+schema, source hashes and timing definitions. Output path collisions are rejected.
+Completed recordings and their sidecars are required by the analyser, which
+defaults to `data/communication/*_communication.csv`. It does not start a
+simulation and will not overwrite its inputs. Filesystem discovery order does
+not affect processing; conditions, seeds, windows and individual IDs are sorted.
+Conditions A/B disable **learned vocal selection**, retaining random emissions;
+production OFF does not mean a mute population. C/D enable Vocal Q. A/C disable
+learned listening and B/D enable it; actual resolved sound is recorded in all cases.
+
+**Exact recording schema (version 1, 27 columns):**
+
+```text
+tick,agent_id,brain_type,learning_controls_vocalization,learning_uses_auditory,
+vocal_mechanism,vocal_action,signal_id,physical_action,
+hunger_bin,thirst_bin,energy_bin,food_dx,food_dy,water_dx,water_dy,
+auditory_kind,heard_signal_id,heard_direction,
+encoded_auditory_kind,encoded_signal_id,encoded_direction,encoded_age,
+perception_radius,generation,age,local_density
+```
+
+A row at tick **t** combines that actor's actual resolved perception of emissions
+from **t−1** with the physical/vocal decisions chosen during its turn at **t**.
+Tick 0 has no decisions. Body bins, age and resource directions are pre-action;
+dying actors are included, newborns first appear on their next acting tick.
+`vocal_action` is `SILENCE` or `SIGNAL`; `signal_id` is blank for SILENCE, otherwise
+an arbitrary integer. `vocal_mechanism` explicitly distinguishes `learned`,
+`random` and `custom`; RandomBrain and production-OFF LearningBrain never pass
+through Vocal Q. The two recorded learning flags describe the actual brain.
+
+LearningBrain exposes only its already encoded immutable pending state to the
+observer. Random/custom body and visual diagnostics use the **same primitive
+encoder**, without claiming those brains use that cognitive state. Need bins are
+the existing clipped integer bins; visible food/water use the nearest Manhattan
+distance tile, ties by `(dy,dx)`, sign directions, and `(2,2)` for absent resources.
+`auditory_kind` is the actual `SILENCE`, `MASKED` or `IDENTIFIED` percept. Only
+IDENTIFIED has `heard_signal_id` and coarse compass direction. The `encoded_*`
+columns separately document the learner's retained non-silent memory feature,
+which may differ from current reception; these fields are blank when listening
+is OFF. Current-percept receiver analysis does not model delayed memory effects.
+Agent IDs are privileged analysis identifiers. No sender identity, exact location,
+distance or loudness is added to Brain-visible observations.
+
+`local_density` counts **other existing agents within Chebyshev radius 2 at tick
+start**, before any actions. It includes actors that later die and excludes
+queued newborns. A grid prefix sum costs O(world area + population) per recorded
+tick, with O(1) queries; it is not an agent sensory capability. The disabled
+observer builds no grid, rows or per-agent diagnostics.
+
+**Analysis definitions and controls:**
+
+- Windows are `(0,100]`, `(100,200]`, … by default. `window_end` is nominal;
+  `actual_window_end` stops at the recorded final tick. Partial final windows are
+  flagged and grouped by their actual endpoints, separately from complete ones.
+  Missing ticks make `complete_window=False`; empty windows retain zero exposures
+  with undefined rates. There is no interpolation, filling after extinction or
+  carry-forward. Unsorted ticks, duplicate decisions/seed runs, invalid payloads
+  or missing sidecars cause explicit errors. Different ecological configurations
+  are kept separate. Arbitrary horizons, including 100/1000/5000, are supported.
+- `V` includes SILENCE. `S` conditions on emitted records only. Their distributions
+  and `P(V|X)` / `P(S|emitted,X)` are separate, for hunger/thirst/energy bins and
+  visible food/water directions. Entropy and empirical discrete MI use log2 bits.
+  `NMI = I/min(H(V),H(X))`; zero denominators and empty samples are undefined,
+  represented by blank CSV cells / JSON null. Unobserved IDs have zero frequency
+  only when the relevant denominator is positive. IDs have no numeric similarity.
+- Each window has **100 permutations** by default. A dedicated NumPy Generator
+  derives stable component seeds from `analysis_seed`, run/window and measure.
+  It never uses simulator or global RNGs. Pooled shuffles preserve vocal/state
+  marginals but **do not control individual identity**. Within-agent shuffles
+  preserve each eligible individual's frequencies; outputs contain observed MI,
+  null mean, sample SD and observed-minus-null MI, which may be negative.
+- `sender_information_by_agent.csv` retains individual estimates. The within-agent
+  summary is empirical `I(V;X|agent_id)`, weighted by eligible individuals' sample
+  counts **within one run**. Thresholds default to 50 decisions or 10 emissions
+  per agent/window. Eligible counts, exposure, thresholds and undefined estimates
+  are explicit. Recorded vocal preferences describe observed choices, not Q-policy
+  probabilities. First/last eligible-window JSD requires two windows.
+- Emitted-ID Jensen–Shannon divergence uses a shared vocabulary, log2, 0–1 bits.
+  Eligible agents require 10 emissions; at most 1000 uniformly seeded pairs are
+  evaluated (all pairs when smaller). A frequency-matched null redistributes IDs
+  across eligible agents, preserving global frequencies and each agent's emission
+  count, using the same pair subset. Mean/median, eligible agents and pair counts
+  are recorded. Low JSD indicates distributional similarity, not shared meaning.
+- Receiver distributions use the **same receiving tick's** physical action and
+  current resolved auditory kind or identified `(ID,direction)`. Empirical
+  `I(A;percept)` is accompanied by need-conditioned and need+visual-conditioned
+  estimates, restricting each stratum to at least 20 observations by default.
+  Null shuffles stay inside those strata. Listening OFF/ON is the existing
+  comparison; association alone is not a causal response or semantic use.
+- SILENCE selection is measured overall and by need bins, current auditory kind
+  and privileged density. Auditory SILENCE/MASKED/IDENTIFIED rates use **all actual
+  receiver observations**, and sum to one for nonempty windows. Emissions per
+  recorded tick and per decision are separate. `IDENTIFIED/emitted` is a descriptive
+  ratio, not a delivery/understanding probability: one emission can reach several
+  receivers, and transmission crosses window boundaries.
+- Every metric is computed per run first, then matching windows receive an
+  **equal-seed** mean, sample SD (`ddof=1`), min/max and finite contributing `n`.
+  Seeds are never pooled into one population. One contributing seed has undefined
+  SD; missing measurements remain gaps. Within-run observations are repeated
+  measurements, not independent statistical replicates.
+
+CLI also exposes `--pattern`, `--min-agent-decisions`, `--min-agent-emissions`,
+`--min-receiver-stratum`, `--max-pairs` and `--top-signals`. Metadata records all
+options, input/config/source hashes, seeds, definitions, missing-data rules and
+Python/NumPy/pandas/matplotlib versions. Scientific graphs use Agg, 180 dpi,
+equal-seed means ±1 SD and contributing seed counts where applicable. No seaborn
+or random jitter is used. Top-12 signal displays combine remaining IDs as OTHER,
+while CSV keeps the full distribution. Individual heatmaps use the lowest seed
+per condition, its last eligible window, and at most 30 agents ranked by decision
+exposure then ID, displaying rows in ID order; both sample thresholds apply.
+
+**Outputs in `analysis/communication/`:**
+
+| CSV | Contents |
+|---|---|
+| `vocal_frequency_over_time.csv` | Full V and emitted-ID frequencies per run/window |
+| `silence_over_time.csv` | Decision, emission and SILENCE counts/rates |
+| `masking_over_time.csv` | Resolved percept counts/rates and descriptive delivery ratio |
+| `conditional_vocal.csv` | State-conditioned V and S distributions |
+| `silence_by_state.csv` | SILENCE by need, directions, percept and density |
+| `sender_information.csv` | Pooled and identity-conditioned MI/nulls |
+| `sender_information_by_agent.csv` | Eligible individual MI/nulls |
+| `vocal_preferences_by_agent.csv` | Exposure, entropy, most frequent ID and eligibility |
+| `vocal_frequency_by_agent.csv` | Nonzero emitted-ID counts; absent IDs are zero given exposure |
+| `population_convergence.csv` | Pairwise JSD and frequency-matched null |
+| `receiver_action_distribution.csv` | Same-tick action proportions by percept |
+| `receiver_responsiveness.csv` | Raw/need/need+visual MI and nulls |
+| `vocal_preference_changes.csv` | First/last eligible-window distribution change |
+| `communication_run_summary.csv` | Per-seed exposure, ecology and whole-run rates |
+| `time_series_summary.csv` | Equal-seed mean, sample SD, min/max and n |
+
+Ten PNGs show vocal activity (`vocal_activity_over_time.png`), actual auditory
+outcomes (`auditory_outcomes_over_time.png`), emitted IDs (`signal_frequency.png`),
+pooled/individual-conditioned information (`sender_information_over_time.png`),
+need-conditioned choices (`vocal_by_need_state.png`), individual distributions
+(`individual_vocal_preferences.png`), JSD/nulls (`population_convergence_over_time.png`),
+receiver action distributions (`receiver_action_by_auditory.png`), matching-window
+activity/masking (`masking_vs_emission.png`) and conditioned SILENCE
+(`silence_by_state.png`). `analysis_metadata.json` makes the inputs, selections
+and definitions inspectable. Generated records/results stay local and are ignored
+by Git; the source, tests and this documentation are retained.
+
+**Limitations:** permutation baselines control categorical frequencies, not temporal
+autocorrelation, shared tick/environment trends or selective survival. Within-agent
+conditioning removes between-agent identity mixtures, not all confounding. Receiver
+conditioning is sparse and incomplete; memory and other context are not eliminated.
+The observer records actual decisions, not counterfactual policies. Analysis stores
+one decision window at a time plus summary counters/plot rows; detailed result CSVs
+can still be large. Dense contingency calculations and pairwise nulls become costly
+with large vocabularies, populations or strata. Only compact per-decision recording
+is implemented; there is no silently sampled mode. PNG byte reproducibility applies
+within the same software/font environment. None of these measures establishes
+meaning, conventions, cooperation, causality or language. A later experiment can
+test whether corrected sender-state association is used by receivers, with controls
+for identity, body/visual state, retained memory and time; v0.7 is not implemented.
+
+**Verified pilot:** all **282 tests pass** (236 before edits); all five historical
+fixtures are unchanged, and complete state/event/RNG checks match recording ON/OFF.
+The unchanged ecology was run for **1000 ticks × 3 seeds × 4 conditions**. All 12
+runs reached tick 1000, recording 8,424,234 decisions. Whole-run equal-seed averages:
+
+| Condition (listening / vocal learning) | Emission % ± sample SD | MASKED % ± sample SD |
+|---|---:|---:|
+| A: OFF / OFF, random emission | 9.923 ± 0.124 | 80.332 ± 0.159 |
+| B: ON / OFF, random emission | 10.020 ± 0.045 | 80.642 ± 0.031 |
+| C: OFF / ON | 94.140 ± 0.005 | 67.151 ± 0.200 |
+| D: ON / ON | 94.120 ± 0.009 | 66.782 ± 0.081 |
+
+Early individual-conditioned associations were positive in learned conditions
+(e.g. C's food-direction corrected MI: 0.132478 ± 0.014394 bits in (0,100]), but
+the final window was near/below its null (C: −0.022982 ± 0.001725 bits). Receiver
+associations also decreased; random-production/listening-ON B had an early
+need+visual-conditioned association, so association alone does not establish
+informative learned signals. Raw final JSD was lower in C/D, alongside lower
+frequency-matched null JSD and much larger emission samples. No shared meaning,
+convention, communication benefit or sustained silence increase is claimed.
+See the [verification report](docs/communication_analysis_v061.md) for all sample
+counts, early/final comparisons, costs and limitations. Compact input CSVs total
+820.864 MiB; outputs total 342.107 MiB. Recording OFF was within timing noise of
+v0.6; ON cost about 20.5% in a separate short benchmark. Offline analysis with
+100 permutations/window took about 24 minutes locally; this is a scale limitation.
 
 ## Run and test
 
@@ -96,6 +310,7 @@ systems/reproduction.py    Eligibility, local partner lookup, costs, cooldown
 simulation/simulation.py   Seeded setup, tick loop, births, aggregate accounting
 simulation/statistics.py   Latest aggregate snapshot and streaming CSV writer
 simulation/events.py       Optional generic event sink and JSONL writer
+simulation/communication_observer.py Optional compact decision/perception sink, shared state diagnostics
 tests/test_basic.py         Original v0.1 tests, with extended CSV schema support
 tests/test_evolution.py     v0.2 tests
 tests/test_statistics.py    Living-genome summaries and observation-only verification
@@ -104,6 +319,8 @@ tests/test_fixed_perception.py Fixed-radius experiments, inheritance, and CLI va
 tests/test_auditory.py       Hearing, privacy, timing, RNG and historical controls
 tests/test_listening.py     Masking, memory, listening, ablations and v0.5 fixture
 tests/test_vocalization.py  Dual heads, shared reward, RNG isolation, controls and v0.6 fixture
+tests/test_communication_observer.py Full observational isolation and timing
+tests/test_communication_analysis.py Categorical toys, missing data, equal-seed summaries and byte replay
 tests/auditory_control.py    Full ecological state/action digest helpers
 tests/fixtures/             Pre-v0.3 and pre-v0.4 deterministic control digests
 experiments/learning_demo.py Controlled repeated-resource learning validation
@@ -112,6 +329,11 @@ experiments/masking_demo.py Five deterministic sensory masking examples
 experiments/listening_demo.py Controlled delayed sound/action association and ablation
 experiments/vocal_learning_demo.py Repeated physiological reward / arbitrary vocal preferences
 experiments/vocal_verification.py Initial tied policy and short 2x2 descriptive checks
+experiments/communication_pilot.py Explicit short 2x2 recording runner, no ecology tuning
+experiments/analyze_communication.py Offline per-run communication analysis and metadata
+experiments/communication_data.py Validated streaming-window inputs
+experiments/communication_metrics.py Entropy/MI/JSD and isolated permutation baselines
+experiments/communication_plots.py Ten headless descriptive figures
 experiments/analyze_fixed_perception.py Offline CSV aggregation and PNG plots
 tests/test_analyze_fixed_perception.py Analysis fixtures, missing data, and reproducibility
 requirements-analysis.txt   Optional pandas/matplotlib dependencies

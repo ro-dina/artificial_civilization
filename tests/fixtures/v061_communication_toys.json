@@ -1,0 +1,10 @@
+{
+  "description": "Synthetic categorical validation only; arbitrary IDs carry no semantic labels.",
+  "A_independent": {"v": [3, 3, 12, 12], "x": [0, 1, 0, 1], "expected_mi_bits": 0},
+  "B_dependent": {"v": [3, 3, 12, 12], "x": [0, 0, 1, 1], "expected_mi_bits": 1},
+  "C_identity": {"v": [3, 3, 12, 12], "x": [0, 0, 1, 1], "agent_id": [0, 0, 1, 1], "expected_pooled_mi_bits": 1, "expected_conditional_mi_bits": 0},
+  "D_identical": {"p": [2, 2, 0], "q": [3, 3, 0], "expected_jsd_bits": 0},
+  "E_disjoint": {"p": [4, 0, 0], "q": [0, 4, 0], "expected_jsd_bits": 1},
+  "F_receiver_independent": {"a": ["wait", "eat", "wait", "eat"], "percept": ["SILENCE", "SILENCE", "ID_12:E", "ID_12:E"], "expected_mi_bits": 0},
+  "G_receiver_dependent": {"a": ["wait", "wait", "eat", "eat"], "percept": ["SILENCE", "SILENCE", "ID_12:E", "ID_12:E"], "expected_mi_bits": 1}
+}

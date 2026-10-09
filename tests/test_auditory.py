@@ -216,7 +216,7 @@ class AuditoryTests(unittest.TestCase):
                                      "--csv", str(path)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             metadata = json.loads(path.with_suffix(".csv.metadata.json").read_text())
-            self.assertEqual(metadata["version"], "0.6")
+            self.assertEqual(metadata["version"], "0.6.1")
             self.assertEqual(metadata["config"]["hearing_radius"], 0)
             self.assertEqual(metadata["config"]["signal_vocab_size"], 40)
             missing = Path(directory) / "invalid.csv"
