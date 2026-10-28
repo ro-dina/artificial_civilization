@@ -1,4 +1,4 @@
-# Artificial Civilization Simulation — v0.6.1
+# Artificial Civilization Simulation — v0.6.2
 
 A headless, standard-library-only artificial-life simulation for experiments in
 emergent behavior. v0.6 adds learned vocalization selection through a second,
@@ -15,6 +15,101 @@ whether they were heard. There are no communication rewards. Agriculture, econom
 technology, crafting, combat, culture, and civilization are not implemented.
 Renewable food is an environmental process, not farming. Higher-level phenomena
 remain research questions; there are no scripted civilization stages or outcomes.
+
+## Vocal Q Learning Diagnostics — v0.6.2
+
+v0.6.2 adds **optional, read-only measurement** of what the existing Vocal Q
+learner updates, revisits, retains and evicts. It adds no learning mechanism,
+reward, speaking cost, capacity change, semantic mapping or ecological rule.
+Physical/vocal choices, both Q tables and their LRU orders, pending transitions,
+auditory memory, all RNG streams and the existing 27-column communication CSV
+remain unchanged. Config and simulation defaults are unchanged. Ordinary CSV
+and communication sidecars retain their v0.6.1 format/version for compatibility;
+the separate diagnostics use version 0.6.2. No communication or language is claimed.
+
+```bash
+# Optional diagnostics; .csv.gz enables deterministic gzip, without sampling.
+python3 main.py --mode evolution --brain learning --seed 0 --ticks 1000 \
+  --vocal-learning-csv data/vocal_learning/D_seed_0.csv.gz
+
+# Postprocess completed recordings; this command never starts a simulation.
+python3 -m experiments.analyze_vocal_learning \
+  --data-dir data/vocal_learning --output-dir analysis/vocal_learning \
+  --window-size 100
+# Direct invocation works too: python3 experiments/analyze_vocal_learning.py
+
+# OPTIONAL explicit six-run pilot, C/D × seeds 0/1/2, unchanged evolution preset.
+# Refuses existing destinations; maximum 1000 ticks. Do not repeat existing runs.
+python3 -m experiments.vocal_learning_pilot --ticks 1000 --seeds 0 1 2
+
+# Reuse existing, verified v0.6.1 permutation results instead of recomputing them.
+python3 -m experiments.analyze_vocal_learning \
+  --communication-analysis analysis/communication \
+  --communication-verification data/v061_verification.json
+```
+
+`--vocal-learning-csv PATH` writes four compact streams: `PATH` (decisions),
+`<stem>.updates.csv[.gz]` (every actual TD update), `<stem>.rows.csv[.gz]`
+(actual allocations/evictions and distinct death/run-end records), and
+`<stem>.states.csv[.gz]` (exact encoded keys interned once). A completed
+`PATH.metadata.json` binds all files by SHA-256, schema, counts, full Config,
+config hash, seed, final tick/statistics and source hashes. Recording OFF
+creates none of these records or diagnostic histories. A/B and RandomBrain
+decisions have blank Vocal Q fields, meaning **not applicable**, rather than
+zero-valued Q learning. A/B still use the existing random emissions.
+
+Choice measurements follow the previous transition update and precede action
+execution. They include row occupancy, presence/allocation/eviction counts,
+Q extrema/mean/population SD, exact maximum ties, maximum-minus-second-largest
+gap, SILENCE value/rank, selected action/value, exploration and implied policy
+probability. Ties use the selector's exact `==`, without a new tolerance:
+
+```text
+P(SILENCE | state) = epsilon/N + (1-epsilon) * silence_is_max/M
+N = number of vocal actions; M = number tied for maximum Q.
+```
+
+This probability is diagnostic only; it never selects actions. With default
+epsilon 0.2 and 17 actions, all-tied rows give 1/17, unique SILENCE maxima
+0.811765, and nonmaximal SILENCE 0.011765. A zero top-two gap can coexist with
+nonuniform action values when multiple actions tie for the maximum.
+
+State history belongs entirely to the optional observer, never to Brain memory.
+It distinguishes first-ever keys, stored revisits and post-eviction revisits
+per individual, using exact collision-free, encounter-order integer identifiers.
+The observer retains a run key dictionary and living actors' scalar key histories;
+this is additional diagnostic memory and is not bounded by cognitive capacity.
+Dead Human objects and complete Q tables are not retained. Every actual row
+eviction is hooked directly; death and run termination are separate events.
+Each TD record uses the actual reward/target/update and records terminal and
+previously-recreated-row flags, without another reward or observation call.
+
+Analysis uses per-run `(0,100]`, `(100,200]`, … windows and age bins (default 25).
+It retains seed-level measurements, then equal-seed means and sample SD
+(`ddof=1`), with finite `n` and exposure counts. Missing/empty estimates are
+blank; partial windows are explicit; no interpolation or post-extinction filling.
+Individual eligibility defaults to 50 decisions; same-ID first/last and fixed
+early/next/early/final comparisons require 20 decisions per compared window.
+Plots select the lowest seed per condition and four highest-exposure eligible
+individuals, breaking ties by ID. Repeated observations are not independent
+experimental replicates. Age profiles mix individuals and selective survival;
+paired results are reported separately.
+
+`analysis/vocal_learning/` contains per-window/run/age/individual/paired/state
+CSV tables, equal-seed summaries, metadata and ten required PNGs at 180 dpi:
+state hit rate, eviction rate, occupancy, Q preference gap, SILENCE probability
+and actual frequency, Q ties, learning by age, novelty/recreation, TD error and
+individual trajectories. Verified communication joins add per-window and
+individual-window MI comparisons and two further plots. A seed alone never
+authorizes a join: full Config, final statistics and the entire simultaneous
+communication CSV hash must match an archived analysis input. The pilot also
+compares every ordinary statistics CSV byte. Verified redundant new communication
+copies are discarded; the original recordings and expensive permutation outputs
+remain intact.
+
+See [the v0.6.2 verification and scientific report](docs/vocal_learning_diagnostics_v062.md)
+for the exact schemas, six-run results, storage/overhead, paired comparisons and
+limits. The release stops at diagnostics; it does not implement v0.7.
 
 ## Communication Analysis — v0.6.1
 

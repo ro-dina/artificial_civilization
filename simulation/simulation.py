@@ -12,6 +12,7 @@ from agents.observation import Observation, TileObservation
 from config import Config, REPRODUCTIVE_TYPES
 from simulation.cohorts import CohortSink, PerceptionCohorts
 from simulation.communication_observer import CommunicationObserver, CommunicationSink
+from simulation.vocal_learning_observer import VocalLearningObserver
 from simulation.events import Event, EventSink
 from simulation.statistics import Statistics, summarize_genomes, summarize_learning
 from systems.communication import Communication
@@ -30,6 +31,7 @@ class Simulation:
     def __init__(self, config: Config, *, event_sink: EventSink | None = None,
                  cohort_sink: CohortSink | None = None, lineage_sink: EventSink | None = None,
                  communication_sink: CommunicationSink | None = None,
+                 vocal_learning_observer: VocalLearningObserver | None = None,
                  brain_factory: Callable[[Random, Config], Brain] | None = None) -> None:
         self.config = config
         self.event_sink = event_sink
@@ -37,6 +39,7 @@ class Simulation:
         self.lineage_sink = lineage_sink
         self.cohorts = PerceptionCohorts() if cohort_sink is not None else None
         self.communication_observer = CommunicationObserver(config, communication_sink) if communication_sink is not None else None
+        self.vocal_learning_observer = vocal_learning_observer
         if brain_factory is None:
             brain_factory = LearningBrain if config.brain == "learning" else RandomBrain
         self.brain_factory = brain_factory
@@ -88,13 +91,15 @@ class Simulation:
         event_sink: EventSink | None = None,
         cohort_sink: CohortSink | None = None, lineage_sink: EventSink | None = None,
         communication_sink: CommunicationSink | None = None,
+        vocal_learning_observer: VocalLearningObserver | None = None,
         brain_factory: Callable[[Random, Config], Brain] | None = None,
     ) -> Simulation:
         settings = config if config is not None else Config()
         if seed is not None:
             settings = replace(settings, random_seed=seed)
         return cls(settings, event_sink=event_sink, cohort_sink=cohort_sink,
-                   lineage_sink=lineage_sink, communication_sink=communication_sink, brain_factory=brain_factory)
+                   lineage_sink=lineage_sink, communication_sink=communication_sink,
+                   vocal_learning_observer=vocal_learning_observer, brain_factory=brain_factory)
 
     @property
     def population(self) -> int:
@@ -170,7 +175,11 @@ class Simulation:
                 start_x, start_y = human.x, human.y
                 before = {"age": human.age, "hunger": human.hunger,
                           "thirst": human.thirst, "energy": human.energy}
+            if self.vocal_learning_observer is not None:
+                self.vocal_learning_observer.begin(human, self.tick)
             decision = human.brain.choose_action(human, observation)
+            if self.vocal_learning_observer is not None and (learner is None or not learner.learning_controls_vocalization):
+                self.vocal_learning_observer.not_applicable()
             if not isinstance(decision, Decision) or not isinstance(decision.action, Action):
                 raise ValueError("Brains must return a Decision containing an Action")
             if decision.signal_id is not None:
@@ -219,6 +228,8 @@ class Simulation:
             observe_outcome = getattr(human.brain, "observe_outcome", None)
             if observe_outcome is not None:
                 observe_outcome(Physiology.capture(human))
+            if self.vocal_learning_observer is not None and cause is not None:
+                self.vocal_learning_observer.end_agent(human, self.tick, "death")
             if learner is not None:
                 learning_updates += learner.learning_updates - previous_updates
                 exploratory_actions += int(learner.last_exploratory)
