@@ -1,4 +1,4 @@
-# Artificial Civilization Simulation — v0.6.2
+# Artificial Civilization Simulation — v0.6.3
 
 A headless, standard-library-only artificial-life simulation for experiments in
 emergent behavior. v0.6 adds learned vocalization selection through a second,
@@ -15,6 +15,69 @@ whether they were heard. There are no communication rewards. Agriculture, econom
 technology, crafting, combat, culture, and civilization are not implemented.
 Renewable food is an environmental process, not farming. Higher-level phenomena
 remain research questions; there are no scripted civilization stages or outcomes.
+
+## Vocal Preference Persistence — v0.6.3
+
+v0.6.3 is an **offline longitudinal analysis** of the six existing v0.6.2
+diagnostic recordings. It changes no simulator, learning, sensory, RNG, Config
+or recording-schema code and starts no ecological simulations. Historical
+recordings, analyses and fixtures remain unchanged.
+
+```bash
+python3 -m experiments.analyze_vocal_persistence
+# Direct invocation also works:
+python3 experiments/analyze_vocal_persistence.py \
+  --data-dir data/vocal_learning --output-dir analysis/vocal_persistence
+```
+
+The unit is `(run, individual, exact encoded state, actual allocation episode)`.
+Actual allocation/eviction events delimit episodes; death and run end close
+retained rows separately. Consecutive retained encounters are the primary
+comparison. Post-eviction revisits begin new episodes and never count as
+uninterrupted memory. Row storage duration and encounter intervals are distinct.
+
+Existing records contain summary Q values, exact tie counts, selected action/Q,
+exploration branch and SILENCE membership, **not complete Q vectors**. The
+analyzer reports unique preferred-action identity only when those facts identify
+it exactly. An exploring choice with nonmaximal Q generally leaves identity
+unknown. Complete maximum sets are identifiable in limited cases, including
+all-tied rows and exhaustive recorded membership/cardinality constraints. Exact
+Jaccard/policy TV uses only sufficient information; other estimates stay blank.
+No hidden Q vectors, missing identities or state trajectories are reconstructed.
+Coverage and pair counts accompany every identity rate. Behavioral choice
+matching, Q-gap stability, SILENCE stability and policy identity remain separate.
+
+`analysis/vocal_persistence/` contains run/window/individual/episode/visit/age/
+experience/cohort summaries, actual turnover, transitions, matched MI comparisons,
+metadata and ten 180-dpi PNGs. The large episode table streams to
+`persistence_by_episode.csv.gz`; no full Q vectors or per-pair intermediate table
+are stored. Other CSVs remain plain text. Input hashes, full Config, schema,
+completion, event boundaries and counters are checked. Incomplete data is
+rejected; partial final windows are explicit. No missing windows or post-extinction
+values are filled. Within observed windows, known categories with no occurrences
+have zero counts; rates with no origin exposure remain blank. Output guards
+protect the historical analysis directories.
+
+Each run is summarized first, then seeds receive equal weight with sample SD
+(`ddof=1`) and finite n. Graphs show conditional identity coverage and omit
+identity points with fewer than 20 identifiable pairs per seed/window. Paired
+development compares nonoverlapping first/last three encounters of the same
+episode with at least six encounters. Individual plots use the lowest eligible
+seed and two highest-exposure episodes, with ID/state/epoch tie-breaking.
+Age profiles remain observational and reflect selective survival.
+
+Default MI comparison reuses verified v0.6.1/v0.6.2 outputs, binding all diagnostic
+stream hashes, full Config, simultaneous communication hashes and archived result
+hashes. It does not rerun permutation analysis or merge on seed alone. Paths
+can be set with `--communication-dir`, `--vocal-dir`, and their `--*-verification`
+options. `--no-mi` explicitly omits those comparisons for synthetic/other data;
+it does not create replacement simulations.
+
+See [the v0.6.3 scientific and verification report](docs/vocal_preference_persistence_v063.md)
+for schemas, synthetic controls, per-seed results, coverage and limitations.
+Stable preferences do not establish meanings, communication, conventions or
+language. Future self-masking is documented there only; emission timing,
+self-signal exclusion, rewards and SILENCE bias remain unchanged.
 
 ## Vocal Q Learning Diagnostics — v0.6.2
 
