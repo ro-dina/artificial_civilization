@@ -165,6 +165,16 @@ class LearningBrain(PrimitiveStateEncoder):
         """Read-only diagnostic; unseen states have all-zero values and are not stored."""
         return tuple(self._values.get(self.state(body, observation), (0.0,) * len(self.actions)))
 
+    def inspect_physical_q(self, state: State) -> tuple[bool, tuple[float, ...]]:
+        """Read one encoded row without allocation, recency changes or learning.
+
+        Presence distinguishes an absent zero prior from a stored all-zero row.
+        This diagnostic is never called by the normal decision/update path.
+        """
+        values = self._values.get(state)
+        return (values is not None,
+                tuple(values) if values is not None else (0.0,) * len(self.actions))
+
     def _remember(self, state: State) -> list[float]:
         if state not in self._values:
             if len(self._values) == self.capacity:

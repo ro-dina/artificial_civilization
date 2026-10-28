@@ -1,4 +1,4 @@
-# Artificial Civilization Simulation — v0.6.3
+# Artificial Civilization Simulation — v0.6.4
 
 A headless, standard-library-only artificial-life simulation for experiments in
 emergent behavior. v0.6 adds learned vocalization selection through a second,
@@ -15,6 +15,59 @@ whether they were heard. There are no communication rewards. Agriculture, econom
 technology, crafting, combat, culture, and civilization are not implemented.
 Renewable food is an environmental process, not farming. Higher-level phenomena
 remain research questions; there are no scripted civilization stages or outcomes.
+
+## Counterfactual Auditory Utilization — v0.6.4
+
+v0.6.4 separates **observed receiver/action associations** from **exact frozen
+Physical Q input dependence**. It adds one read-only Q-row inspection method and
+isolated experimental/analysis modules. Normal simulation, Config, rewards,
+selection, auditory memory/masking, RNG draws, LRU, and existing CSV schemas are
+unchanged. No historical pilot or permutation analysis is rerun.
+
+```bash
+# Reuse the verified twelve v0.6.1 recordings; starts no simulations.
+python3 -m experiments.analyze_auditory_utilization --part retrospective
+
+# Explicit small controlled experiment, separately predefined:
+# four conditions × three seeds; nine trained single-agent receivers,
+# 256 trials × 8 ticks each, plus three untrained receivers.
+python3 -m experiments.analyze_auditory_utilization --part controlled
+
+# Both components (default); direct script invocation also works.
+python3 -m experiments.analyze_auditory_utilization \
+  --output-dir analysis/auditory_utilization \
+  --performance-path data/v064_performance.json
+```
+
+Install `requirements-analysis.txt` for pandas/matplotlib. The retrospective
+component matches within run, individual, 100-tick window and all seven body/
+visual features, requiring 2/5/10 decisions **per exact auditory cell**. It keeps
+current reception, retained memory and encoded auditory features separate.
+Missing comparisons stay blank. Seeds receive equal weight and sample SD;
+coverage and sample counts accompany distances. Historical Physical Q vectors
+cannot be recovered from these action recordings.
+
+Frozen evaluation reads a single Q row without allocating, updating, changing
+recency/memory/pending transitions, selecting an action or drawing randomness.
+It computes the exact epsilon-greedy distribution, TV/JSD and greedy-set changes
+for current removal, ID/direction substitution, explicit memory substitution
+and an auditory-empty baseline. Current removal preserves the specified past
+memory. An empty eighth feature differs from a listening-disabled seven-feature
+key. Missing rows, stored zero rows and two present updated rows remain distinct.
+
+The controlled experiment uses the existing learner and physiological rewards;
+external cue/environment associations are imposed by the harness. Predictive
+listening, listening OFF, cue-independent listening and untrained listening are
+reported for every seed, including partial/failed learning. Evaluation is frozen;
+training water acquisition is **not** a matched ecological-benefit test.
+
+`analysis/auditory_utilization/` contains separate observational/interventional
+CSVs, deterministic compressed context/pair tables, full metadata and nine
+180-dpi PNGs. The [scientific and verification report](docs/auditory_utilization_v064.md)
+records the protocol, results, row coverage, state-preservation checks, costs
+and limitations. Policy sensitivity, learned discrimination, ecological benefit
+and shared meaning are separate claims. This release does not establish language
+or implement v0.7, new rewards or self-masking.
 
 ## Vocal Preference Persistence — v0.6.3
 
