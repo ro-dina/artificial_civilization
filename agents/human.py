@@ -55,3 +55,12 @@ class Human:
         if cause is not None:
             self.alive = False
         return cause
+
+
+# Optional data-only extension: disabled runs retain the original field schema.
+from agents.social_memory import SocialMemory
+
+
+@dataclass(slots=True)
+class SocialHuman(Human):
+    social_memory: SocialMemory = field(default_factory=SocialMemory, repr=False, compare=False)

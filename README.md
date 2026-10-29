@@ -1,4 +1,4 @@
-# Artificial Civilization Simulation — v0.6.4
+# Artificial Civilization Simulation — v0.7.0
 
 A headless, standard-library-only artificial-life simulation for experiments in
 emergent behavior. v0.6 adds learned vocalization selection through a second,
@@ -15,6 +15,82 @@ whether they were heard. There are no communication rewards. Agriculture, econom
 technology, crafting, combat, culture, and civilization are not implemented.
 Renewable food is an environmental process, not farming. Higher-level phenomena
 remain research questions; there are no scripted civilization stages or outcomes.
+
+## Visual Social Recognition and Finite Memory — v0.7.0
+
+v0.7.0 adds **optional perfect visual identity recognition and bounded private
+social memory**. This is an imposed sensory/cognitive capability, not an emergent
+recognition result. Current brains ignore all social information. There are no
+social rewards, attraction, partner preferences, cooperation, friendship, vocal
+identity or communication incentives. Physiology, both Q heads, rewards, actions,
+acoustics, RNG streams, ecology and historical recording schemas are preserved.
+
+```bash
+# Defaults remain OFF. Recording requires explicit --social-memory.
+python3 main.py --mode evolution --brain learning --seed 0 --ticks 100 \
+  --social-memory --social-memory-capacity 32 \
+  --social-reunion-min-absence-ticks 20 \
+  --social-csv data/social_memory/seed_0_social.csv.gz
+
+# Completed recordings only; never starts a simulation.
+python3 -m experiments.analyze_social_memory \
+  --data-dir data/social_memory --output-dir analysis/social_memory
+# Direct script invocation also works.
+python3 experiments/analyze_social_memory.py --help
+
+# OPTIONAL bounded verification; refuses existing destinations, >100 ticks,
+# or >2 seeds. Do not rerun already saved pilot outputs.
+python3 -m experiments.social_memory_pilot --ticks 100 --seeds 0 1
+```
+
+The three settings live in an independent frozen `SocialConfig` in `config.py`:
+`social_memory_enabled=False`, `social_memory_capacity=32` and
+`social_reunion_min_absence_ticks=20`. Separating it preserves historical `Config`
+serialization, config IDs and aggregate CSV bytes. Programmatic use is
+`Simulation(config, social_config=SocialConfig(social_memory_enabled=True))`.
+The new social sidecar binds both configurations and their joint hash.
+Enabled bodies/observations use data-only `SocialHuman` / `SocialObservation`
+subclasses; disabled runs retain exactly the old dataclass field schemas.
+
+Recognition uses the current genome's inclusive Chebyshev visual radius, at the
+normal sequential decision point. Earlier movement/death applies. Visible living
+others are immutable `(individual_id, dx, dy)` records sorted by ID; no private
+state or genealogy is exposed. Radius zero sees only other living agents on the
+same cell. Hearing remains independent and reveals no sender identity.
+
+Every founder/newborn begins with an independent empty LRU. Known identities in
+the observation batch refresh first, then unknown identities allocate, with
+ascending IDs in each phase. At most 32 entries are retained by default; reads do
+not refresh. Evicted identities become unknown. A reunion requires a retained
+identity missed at an intervening observation opportunity and
+`tick - last_seen_tick >= 20` (inclusive). Consecutive contact never counts as a
+reunion. An empty observation records an opportunity; absence never implies death.
+Last confirmed alive is the last direct sighting; remote deaths do not delete
+another agent's memory. No positions or lifetime eviction history are stored in
+agent memory. Newborns first act and update memory on the next tick.
+
+Social recording is optional, streaming and exclusive: existing output/sidecar
+collisions are refused. Its bounded privileged eviction cache can label some
+forgotten reappearances; complete offline history identifies all of them without
+adding agent knowledge. Completed sidecars include schemas, configs, counts,
+source/file hashes and precise event definitions. Analysis checks demography and
+bounded-memory replay, produces per-run/window/individual CSVs, equal-seed means,
+sample SD/finite n and eight headless 180-dpi PNGs. Missing rates remain blank;
+there is no interpolation, death inference or post-extinction filling. Analysis
+also refuses nonempty output directories; use a fresh `--output-dir` for a replay.
+
+**477 tests pass**, including 68 new tests. In the unchanged 100-tick evolution
+pilot, seeds 0/1 recorded 395/418 directed reunions, mean occupancy 10.088/10.085
+and maximum occupancy 32. All ecological/Q/RNG trajectories and ordinary CSV
+bytes match with memory OFF, ON, and ON with recording; full trajectories also
+match the actual v0.6.4 source control. These are mechanism/measurement checks,
+not evidence of social motivation.
+
+The [v0.7.0 scientific and verification report](docs/social_memory_v070.md)
+documents tests, the two-seed bounded pilot, runtime/storage, ordering/capacity
+artifacts and scientific limitations. Social contact does not establish social
+motivation or communication. v0.7.1 reunion rewards and other future acoustic/
+social mechanisms are documented only; they are not implemented.
 
 ## Counterfactual Auditory Utilization — v0.6.4
 

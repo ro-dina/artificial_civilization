@@ -214,3 +214,25 @@ class Config:
                 raise ValueError(f"{resource}_capacity is required for regeneration")
             if cap is not None and getattr(self, f"initial_{resource}") > self.world_width * self.world_height * cap:
                 raise ValueError(f"initial_{resource} exceeds total tile capacity")
+
+
+SOCIAL_MEMORY_ENABLED = False
+SOCIAL_MEMORY_CAPACITY = 32
+SOCIAL_REUNION_MIN_ABSENCE_TICKS = 20
+
+
+@dataclass(frozen=True, slots=True)
+class SocialConfig:
+    """Opt-in observational capability; separate to preserve legacy Config bytes."""
+
+    social_memory_enabled: bool = SOCIAL_MEMORY_ENABLED
+    social_memory_capacity: int = SOCIAL_MEMORY_CAPACITY
+    social_reunion_min_absence_ticks: int = SOCIAL_REUNION_MIN_ABSENCE_TICKS
+
+    def __post_init__(self) -> None:
+        if type(self.social_memory_enabled) is not bool:
+            raise ValueError('social_memory_enabled must be a boolean')
+        for name in ('social_memory_capacity', 'social_reunion_min_absence_ticks'):
+            value = getattr(self, name)
+            if type(value) is not int or value <= 0:
+                raise ValueError(f'{name} must be a positive integer')

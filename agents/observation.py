@@ -84,3 +84,31 @@ class Observation:
         Use auditory.kind to distinguish silence from masking.
         """
         return (self.auditory.signal,) if self.auditory.kind is AuditoryKind.IDENTIFIED else ()
+
+
+@dataclass(frozen=True, slots=True)
+class VisibleIndividual:
+    """Perfect visual identity assumption; relative location and no private state."""
+    individual_id: int
+    dx: int
+    dy: int
+
+    def __post_init__(self):
+        if type(self.individual_id) is not int or self.individual_id < 0:
+            raise ValueError('Visible identity must be a nonnegative integer')
+        if type(self.dx) is not int or type(self.dy) is not int:
+            raise ValueError('Visible relative coordinates must be integers')
+
+
+@dataclass(frozen=True, slots=True)
+class SocialObservation(Observation):
+    """Used only with visual social recognition enabled; old senses are unchanged."""
+    individuals: tuple[VisibleIndividual, ...] = ()
+
+    def __post_init__(self):
+        # Explicit base call avoids the zero-argument super/dataclass-slots trap.
+        Observation.__post_init__(self)
+        if (not isinstance(self.individuals, tuple) or
+                any(not isinstance(i, VisibleIndividual) for i in self.individuals) or
+                any(a.individual_id >= b.individual_id for a, b in zip(self.individuals, self.individuals[1:]))):
+            raise ValueError('Visible individuals must be an immutable tuple ordered by unique identity')

@@ -6,10 +6,11 @@ from random import Random
 
 from agents.brain import Action, Brain, Decision, RandomBrain
 from agents.genome import Genome
-from agents.human import Human
+from agents.human import Human, SocialHuman
+from agents.social_memory import SocialMemory
 from agents.learning import LearningBrain, Physiology
-from agents.observation import Observation, TileObservation
-from config import Config, REPRODUCTIVE_TYPES
+from agents.observation import Observation, SocialObservation, TileObservation
+from config import Config, SocialConfig, REPRODUCTIVE_TYPES
 from simulation.cohorts import CohortSink, PerceptionCohorts
 from simulation.communication_observer import CommunicationObserver, CommunicationSink
 from simulation.vocal_learning_observer import VocalLearningObserver
@@ -32,8 +33,19 @@ class Simulation:
                  cohort_sink: CohortSink | None = None, lineage_sink: EventSink | None = None,
                  communication_sink: CommunicationSink | None = None,
                  vocal_learning_observer: VocalLearningObserver | None = None,
-                 brain_factory: Callable[[Random, Config], Brain] | None = None) -> None:
+                 brain_factory: Callable[[Random, Config], Brain] | None = None,
+                 social_config: SocialConfig | None = None, social_sink=None) -> None:
         self.config = config
+        self.social_config = social_config if social_config is not None else SocialConfig()
+        if not isinstance(self.social_config, SocialConfig):
+            raise ValueError('social_config must be a SocialConfig')
+        if social_sink is not None and not self.social_config.social_memory_enabled:
+            raise ValueError('Social recording requires social_memory_enabled')
+        from simulation.social_observer import SocialObserver
+        from world.social_index import SocialIndex
+        self.social_observer = SocialObserver(self.social_config, social_sink) if social_sink is not None else None
+        self._social_index = SocialIndex() if self.social_config.social_memory_enabled and not config.reproduction_enabled else None
+        self._social_active = False
         self.event_sink = event_sink
         self.cohort_sink = cohort_sink
         self.lineage_sink = lineage_sink
@@ -56,7 +68,7 @@ class Simulation:
         self.reproduction = Reproduction(config, Random(f"{seed}:partners"))
         founder_genome = Genome.founder(config)
         self.agents = [
-            Human(
+            self._new_human(
                 id=agent_id,
                 x=spawn_rng.randrange(config.world_width),
                 y=spawn_rng.randrange(config.world_height),
@@ -84,6 +96,10 @@ class Simulation:
                                             details={"generation": 0, "birth_tick": 0, "genome": human.genome}))
         if self.cohorts is not None:
             self.cohort_sink(self.cohorts.snapshot(0, self.agents))
+        if self.social_observer is not None:
+            for human in self.agents:
+                self.social_observer.life(0, human, 'founder')
+            self.social_observer.tick_end(self.statistics)
 
     @classmethod
     def create_default(
@@ -93,13 +109,21 @@ class Simulation:
         communication_sink: CommunicationSink | None = None,
         vocal_learning_observer: VocalLearningObserver | None = None,
         brain_factory: Callable[[Random, Config], Brain] | None = None,
+        social_config: SocialConfig | None = None, social_sink=None,
     ) -> Simulation:
         settings = config if config is not None else Config()
         if seed is not None:
             settings = replace(settings, random_seed=seed)
         return cls(settings, event_sink=event_sink, cohort_sink=cohort_sink,
                    lineage_sink=lineage_sink, communication_sink=communication_sink,
-                   vocal_learning_observer=vocal_learning_observer, brain_factory=brain_factory)
+                   vocal_learning_observer=vocal_learning_observer, brain_factory=brain_factory,
+                   social_config=social_config, social_sink=social_sink)
+
+    def _new_human(self, **state):
+        if self.social_config.social_memory_enabled:
+            return SocialHuman(**state, social_memory=SocialMemory(
+                self.social_config.social_memory_capacity, self.social_config.social_reunion_min_absence_ticks))
+        return Human(**state)
 
     @property
     def population(self) -> int:
@@ -111,6 +135,16 @@ class Simulation:
             for x, y, tile in self.world.nearby_tiles(human.x, human.y, human.genome.perception_radius)
         )
         auditory = self.communication.perceive(human.id, human.x, human.y)
+        if self.social_config.social_memory_enabled:
+            if self._social_active:
+                index = self.reproduction if self.config.reproduction_enabled else self._social_index
+            else:
+                # Diagnostic observation outside a step must remain read-only,
+                # including when a caller has edited initial positions.
+                from world.social_index import SocialIndex
+                index = SocialIndex()
+                index.begin_tick(self.agents)
+            return SocialObservation(self.tick, tiles, auditory, index.visible(human))
         return Observation(self.tick, tiles, auditory)
 
     def _execute(self, human: Human, action: Action) -> tuple[bool, int, int]:
@@ -120,6 +154,8 @@ class Simulation:
             moved = self.world.move(human, *MOVEMENT[action])
             if moved and self.config.reproduction_enabled:
                 self.reproduction.moved(human, x, y)
+            elif moved and self._social_active and self._social_index is not None:
+                self._social_index.moved(human, x, y)
             return moved, 0, 0
         if action is Action.EAT:
             food = self.world.consume_food(human.x, human.y)
@@ -135,7 +171,7 @@ class Simulation:
     def _offspring(self, a: Human, b: Human) -> Human:
         child_id = self._next_id
         self._next_id += 1
-        return Human(
+        return self._new_human(
             id=child_id, x=a.x, y=a.y,
             brain=self.brain_factory(Random(f"{self.config.random_seed}:brain:{child_id}"), self.config),
             reproductive_type=self._offspring_rng.choice(REPRODUCTIVE_TYPES),
@@ -160,6 +196,9 @@ class Simulation:
         self._order_rng.shuffle(order)
         if self.config.reproduction_enabled:
             self.reproduction.begin_tick(order)
+        if self._social_index is not None:
+            self._social_index.begin_tick(order)
+        self._social_active = self.social_config.social_memory_enabled
         deaths = food_consumed = water_consumed = signals_emitted = 0
         reproduction_attempts = population_limit_blocks = 0
         learning_updates = exploratory_actions = exploitative_actions = 0
@@ -170,6 +209,12 @@ class Simulation:
             learner = human.brain if isinstance(human.brain, LearningBrain) else None
             previous_updates = learner.learning_updates if learner is not None else 0
             observation = self.observe(human)
+            if self.social_config.social_memory_enabled:
+                social_update = human.social_memory.observe(
+                    tuple(i.individual_id for i in observation.individuals), self.tick,
+                    capture=self.social_observer is not None)
+                if self.social_observer is not None:
+                    self.social_observer.observation(self.tick, human, social_update, observation)
             if self.event_sink is not None:
                 previous_vocal_updates = learner.vocal_learning_updates if learner is not None else 0
                 start_x, start_y = human.x, human.y
@@ -219,6 +264,8 @@ class Simulation:
             deaths += int(cause is not None)
             if cause is not None:
                 death_causes[cause] += 1
+                if self.social_observer is not None:
+                    self.social_observer.life(self.tick, human, 'death', cause)
                 if self.cohorts is not None:
                     self.cohorts.death(human, cause)
                 if self.lineage_sink is not None:
@@ -265,6 +312,12 @@ class Simulation:
         self.agents = [human for human in self.agents if human.alive]
         self.agents.extend(newborns)
         self.reproduction.clear()
+        self._social_active = False
+        if self._social_index is not None:
+            self._social_index.clear()
+        if self.social_observer is not None:
+            for child in newborns:
+                self.social_observer.life(self.tick, child, 'birth')
         if self.event_sink is not None or self.lineage_sink is not None:
             for child in newborns:
                 birth = Event(
@@ -306,6 +359,8 @@ class Simulation:
         assert self.population == self.config.initial_population + self.statistics.births - self.statistics.deaths
         if self.cohorts is not None:
             self.cohort_sink(self.cohorts.snapshot(self.tick, self.agents))
+        if self.social_observer is not None:
+            self.social_observer.tick_end(self.statistics)
         return self.statistics
 
     def print_status(self) -> None:

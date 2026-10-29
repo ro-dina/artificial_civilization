@@ -8,19 +8,21 @@ from contextlib import ExitStack
 from dataclasses import asdict, replace
 from pathlib import Path
 
-from config import Config
+from config import Config, SocialConfig
 from simulation.cohorts import CSVCohortWriter
 from simulation.communication_observer import COLUMNS, DENSITY_RADIUS, SCHEMA_VERSION, CSVCommunicationWriter
 from simulation.events import Event, JSONLEventWriter
 from simulation.simulation import Simulation
 from simulation.statistics import CSVStatisticsWriter
+from simulation.social_observer import CSVSocialWriter, write_metadata as write_social_metadata
 from simulation.vocal_learning_observer import (SCHEMAS as VOCAL_SCHEMAS, CSVVocalLearningWriter,
     VocalLearningObserver, hash_file, recording_paths)
 
 
 def main() -> None:
     defaults = Config()
-    parser = argparse.ArgumentParser(description="Artificial Civilization v0.6.1: headless artificial life")
+    social_defaults = SocialConfig()
+    parser = argparse.ArgumentParser(description="Artificial Civilization v0.7.0: headless artificial life")
     parser.add_argument("--mode", choices=("legacy", "evolution"), default="legacy")
     parser.add_argument("--brain", choices=("random", "learning"), default=defaults.brain)
     parser.add_argument("--learning-uses-auditory", action=argparse.BooleanOptionalAction,
@@ -46,8 +48,17 @@ def main() -> None:
     parser.add_argument("--communication-csv", type=Path, help="opt-in compact decision/perception CSV with metadata sidecar")
     parser.add_argument("--vocal-learning-csv", type=Path,
                         help="opt-in Vocal Q decisions, updates, row events and key catalog (.csv or .csv.gz)")
+    parser.add_argument('--social-memory', action=argparse.BooleanOptionalAction, default=social_defaults.social_memory_enabled,
+                        help='opt-in visual identity and bounded memory; current brains ignore it')
+    parser.add_argument('--social-memory-capacity', type=int, default=social_defaults.social_memory_capacity)
+    parser.add_argument('--social-reunion-min-absence-ticks', type=int, default=social_defaults.social_reunion_min_absence_ticks,
+                        help='inclusive elapsed-sighting threshold; continuous contact is never a reunion')
+    parser.add_argument('--social-csv', type=Path, help='exclusive social recording (.csv or .csv.gz) with completion sidecar')
     args = parser.parse_args()
     try:
+        social_config = SocialConfig(args.social_memory, args.social_memory_capacity, args.social_reunion_min_absence_ticks)
+        if args.social_csv is not None and not args.social_memory:
+            raise ValueError('--social-csv requires --social-memory')
         if args.mode == "evolution":
             defaults = Config.evolution()
         config = replace(defaults, random_seed=args.seed, max_ticks=args.ticks,
@@ -61,13 +72,16 @@ def main() -> None:
     metadata_path = args.csv.with_suffix(args.csv.suffix + ".metadata.json") if args.csv else None
     cohort_metadata_path = args.cohort_csv.with_suffix(args.cohort_csv.suffix + ".metadata.json") if args.cohort_csv else None
     communication_metadata_path = args.communication_csv.with_suffix(args.communication_csv.suffix + ".metadata.json") if args.communication_csv else None
+    social_metadata_path = Path(str(args.social_csv) + ".metadata.json") if args.social_csv else None
     vocal_paths = recording_paths(args.vocal_learning_csv) if args.vocal_learning_csv else {}
     vocal_metadata_path = Path(str(args.vocal_learning_csv) + ".metadata.json") if args.vocal_learning_csv else None
     paths = [path.resolve() for path in (args.csv, args.events, metadata_path, args.cohort_csv,
                                        cohort_metadata_path, args.lineage_events, args.communication_csv,
-                                       communication_metadata_path, vocal_metadata_path, *vocal_paths.values()) if path is not None]
+                                       communication_metadata_path, vocal_metadata_path, args.social_csv, social_metadata_path, *vocal_paths.values()) if path is not None]
     if len(set(paths)) != len(paths):
         parser.error("CSV, metadata, and events must use different files (including communication/cohort/lineage outputs)")
+    if args.social_csv and any(path.exists() for path in paths):
+        parser.error('Social recordings refuse existing output/sidecar destinations; choose new paths')
     config_id = hashlib.sha256(json.dumps(asdict(config), sort_keys=True).encode()).hexdigest()
     metadata = {"mode": args.mode, "brain": config.brain, "seed": config.random_seed, "config_id": config_id}
 
@@ -78,6 +92,7 @@ def main() -> None:
         csv_writer = None
         communication_sink = None
         vocal_observer = None
+        social_writer = CSVSocialWriter.open(stack, args.social_csv) if args.social_csv else None
         if args.vocal_learning_csv:
             vocal_writer = CSVVocalLearningWriter.open(stack, args.vocal_learning_csv)
             vocal_observer = VocalLearningObserver(config, vocal_writer)
@@ -111,7 +126,8 @@ def main() -> None:
             metadata_path.write_text(json.dumps({**metadata, "version": "0.6.1", "python": platform.python_version(),
                                                  "config": asdict(config)}, indent=2) + "\n", encoding="utf-8")
         sim = Simulation(config, event_sink=event_sink, cohort_sink=cohort_sink, lineage_sink=lineage_sink,
-                         communication_sink=communication_sink, vocal_learning_observer=vocal_observer)
+                         communication_sink=communication_sink, vocal_learning_observer=vocal_observer,
+                         social_config=social_config, social_sink=social_writer)
         if csv_writer is not None:
             csv_writer.write(sim.statistics)
         fixed_label = (f" fixed_perception_radius={config.fixed_perception_radius}"
@@ -134,6 +150,8 @@ def main() -> None:
             sim.print_status()
         if lineage_sink is not None:
             lineage_sink(Event(sim.tick, "run_finished", details={"population": sim.population}))
+        if sim.social_observer is not None:
+            sim.social_observer.finish(sim.statistics)
         if vocal_observer is not None:
             vocal_observer.finish(sim.agents, sim.tick)
         if communication_metadata_path is not None:
@@ -152,6 +170,9 @@ def main() -> None:
                 "sampling": "None; every ordinary actor decision, including dying actors, excluding newborns during birth tick.",
                 "source_sha256": {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in sources}},
                 indent=2) + "\n", encoding="utf-8")
+
+    if args.social_csv:
+        write_social_metadata(args.social_csv, sim, social_writer)
 
     # Closed/flushed files only: a sidecar certifies a completed recording.
     if vocal_metadata_path is not None:

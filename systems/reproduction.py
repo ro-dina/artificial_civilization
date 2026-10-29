@@ -68,3 +68,8 @@ class Reproduction:
         for parent in (a, b):
             parent.energy -= self.config.reproduction_energy_cost
             parent.next_reproduction_tick = tick + max(1, self.config.reproduction_cooldown)
+
+    def visible(self, human: Human):
+        """Read-only visual query; does not affect pairing order or RNG."""
+        from world.social_index import nearby_individuals
+        return nearby_individuals(self._buckets, self._cell_size, human, human.genome.perception_radius)
