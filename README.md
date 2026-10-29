@@ -1,4 +1,4 @@
-# Artificial Civilization Simulation — v0.7.0
+# Artificial Civilization Simulation — v0.7.1
 
 A headless, standard-library-only artificial-life simulation for experiments in
 emergent behavior. v0.6 adds learned vocalization selection through a second,
@@ -15,6 +15,115 @@ whether they were heard. There are no communication rewards. Agriculture, econom
 technology, crafting, combat, culture, and civilization are not implemented.
 Renewable food is an environmental process, not farming. Higher-level phenomena
 remain research questions; there are no scripted civilization stages or outcomes.
+
+## Social Memory Formation, Retention and Forgetting — v0.7.1
+
+v0.7.1 compares memory algorithms on **the same ordered visual encounter
+histories**. Social memory remains observational: neither Q head, actions,
+rewards, reproduction, ecology, hearing nor RNG draws change. Visual individual
+recognition is imposed, not learned; vocal signals reveal no identity. Contact
+strength is not friendship, and no communication or language emergence is claimed.
+
+Defaults still use the original immediate-allocation LRU class and original
+v0.7.0 CSV. The independent frozen `SocialPolicyConfig` leaves both historical
+`Config` and `SocialConfig` schemas unchanged:
+
+| Field | Default | Meaning |
+|---|---|---|
+| `formation_threshold` | `1` | Consecutive actual visual observation opportunities before commitment |
+| `eviction_policy` | `"lru"` | `lru` or `contact_decay` |
+| `decay_tau` | `100.0` | Positive finite experimental decay scale |
+| `strength_mode` | `"log_contact_decay"` | The supported experimental score |
+| `candidate_capacity` | `None` | Resolves to long-term capacity; separate bounded working storage |
+
+At threshold five, a missed opportunity resets a candidate; its fifth consecutive
+sighting commits it with strength five. Candidates are unknown until commitment.
+Committed hits refresh first, then continuing candidates, then new candidates,
+ascending ID within each group. Candidate overflow discards the least recently
+seen resident, lowest ID on ties. A new commitment always allocates, evicting a
+resident if necessary. Decay chooses the resident with the lowest
+`log(log1p(contact_count)) - (tick - last_seen_tick) / tau`, lowest ID on ties.
+Its numerically stable comparison cancels the current tick, uses no exponentials
+or randomness, and strengthens entries only on actual sightings. This formula
+is an experimental hypothesis, not a validated human-memory model.
+
+```bash
+# New diagnostics are separate from the unchanged --social-csv format.
+python3 main.py --mode evolution --brain learning --seed 0 --ticks 100 \
+  --social-memory --social-formation-threshold 5 \
+  --social-eviction-policy contact_decay --social-decay-tau 100 \
+  --social-candidate-capacity 32 \
+  --social-policy-csv data/social_memory_v071/example.csv.gz
+# Add --social-policy-trace for optional candidate/commit/evict transitions.
+
+# Complete one-row-per-opportunity histories, including empty observations:
+python3 main.py --mode evolution --brain learning --seed 9 --ticks 100 \
+  --social-memory --social-history-csv data/social_memory_v071/example_history.csv.gz
+
+# Staged runner, each phase explicit; refuses existing destinations.
+python3 -m experiments.social_memory_experiments --phase pilot
+# Review pilot runtime/storage before the separate bounded comparison:
+python3 -m experiments.social_memory_experiments --phase primary
+# Optional short sensitivities, using the pilot encounter histories:
+python3 -m experiments.social_memory_experiments --phase capacity
+python3 -m experiments.social_memory_experiments --phase decay
+
+# Analysis only; never starts an ecological simulation. Use a fresh output path.
+python3 -m experiments.analyze_social_memory_policies \
+  --histories data/social_memory_v071/histories/seed_{0,1,2}_500.csv.gz \
+  --horizon 500 --candidate-capacity 32 \
+  --output-dir analysis/social_memory_v071/replay_check
+```
+
+Programmatic use: `Simulation(config, social_config=SocialConfig(True),
+social_policy=SocialPolicyConfig(formation_threshold=5,
+eviction_policy="contact_decay"))`. Newborns start empty and first observe on
+the next tick. Candidate/LTM state is released with a deceased observer; remote
+death never becomes private agent knowledge.
+
+The runner supports A/B/C/D (threshold 1/5 × LRU/decay), capacities
+8/16/32/64/128 and decay scales 20/50/100/200. It starts with 100 ticks and three
+seeds, then requires a separate 500-tick phase. The executed sensitivity studies
+hold candidate storage at 32 while varying long-term capacity. A later run up to
+1000 ticks requires explicit `--allow-long`; no long factorial sweep is automatic.
+
+Versioned outputs live in `data/social_memory_v071/` and
+`analysis/social_memory_v071/{pilot,primary,capacity,decay}/`. Each analysis
+contains per-seed, discrete-window, age and distribution CSVs, equal-seed means
+and sample SD, paired differences, ten 180-dpi PNGs and hashed provenance.
+Original social data and figures are preserved. The primary denominator is
+contacts with identities that achieved five consecutive sightings **strictly
+before** the current encounter, shared across all algorithms. Recognition is
+measured before commitment. Never-committed candidates and forgotten memories
+are distinct; zero denominators stay unavailable. Seeds, not individual
+contacts, are the independent replications.
+
+See the [v0.7.1 scientific report](docs/social_memory_formation_forgetting_v071.md)
+for executed conditions, per-seed results, compatibility checks, costs and
+limitations. In particular, B/D have an additional bounded candidate buffer;
+equal long-term capacity does not mean equal total identity storage. There is
+no social reward or social Q input in this release.
+
+The completed 500-tick comparison (seeds 0/1/2, K=32, tau=100) gives these
+equal-seed means ± sample SD, in percent:
+
+| Condition | Historically eligible recognition | Qualifying-reunion recognition |
+|---|---:|---:|
+| A: immediate LRU | 95.857 ± 0.388 | 11.193 ± 0.498 |
+| B: threshold-five LRU | 94.935 ± 0.348 | 31.636 ± 1.078 |
+| C: immediate decay | 54.153 ± 0.300 | 55.027 ± 0.609 |
+| D: threshold-five decay | 77.038 ± 0.505 | 49.379 ± 0.813 |
+
+The tested alternatives reduce overall recognition relative to A, while improving
+long-gap reunion recognition. This is a memory tradeoff on identical histories,
+not a survival or communication effect. Fewer evictions alone do not establish
+better memory. Three seeds support descriptive comparison, not significance
+claims. The 100-tick A/D capacity sweep covers K=8/16/32/64/128; both saturate
+at 1.0 for K≥32. The short D tau sweep (20/50/100/200) has no evictions and cannot
+distinguish decay scales. The 500-tick comparison took about 12.1 minutes;
+longer sensitivity grids were deferred. All 80 analysis files across four phases
+are saved, and **523 tests pass**. Existing 100-tick legacy social CSV bytes,
+archived-source ecological/Q/RNG states and online/replay memory states match.
 
 ## Visual Social Recognition and Finite Memory — v0.7.0
 
@@ -89,8 +198,8 @@ not evidence of social motivation.
 The [v0.7.0 scientific and verification report](docs/social_memory_v070.md)
 documents tests, the two-seed bounded pilot, runtime/storage, ordering/capacity
 artifacts and scientific limitations. Social contact does not establish social
-motivation or communication. v0.7.1 reunion rewards and other future acoustic/
-social mechanisms are documented only; they are not implemented.
+motivation or communication. Reunion rewards and other future acoustic/social
+mechanisms are not implemented; v0.7.1 isolates memory mechanics instead.
 
 ## Counterfactual Auditory Utilization — v0.6.4
 

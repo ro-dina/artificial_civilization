@@ -10,7 +10,7 @@ from agents.human import Human, SocialHuman
 from agents.social_memory import SocialMemory
 from agents.learning import LearningBrain, Physiology
 from agents.observation import Observation, SocialObservation, TileObservation
-from config import Config, SocialConfig, REPRODUCTIVE_TYPES
+from config import Config, SocialConfig, SocialPolicyConfig, REPRODUCTIVE_TYPES
 from simulation.cohorts import CohortSink, PerceptionCohorts
 from simulation.communication_observer import CommunicationObserver, CommunicationSink
 from simulation.vocal_learning_observer import VocalLearningObserver
@@ -34,16 +34,29 @@ class Simulation:
                  communication_sink: CommunicationSink | None = None,
                  vocal_learning_observer: VocalLearningObserver | None = None,
                  brain_factory: Callable[[Random, Config], Brain] | None = None,
-                 social_config: SocialConfig | None = None, social_sink=None) -> None:
+                 social_config: SocialConfig | None = None, social_sink=None,
+                 social_policy: SocialPolicyConfig | None = None, social_policy_sink=None) -> None:
         self.config = config
+        self.social_policy = social_policy
+        if social_policy is not None and not isinstance(social_policy, SocialPolicyConfig):
+            raise ValueError('social_policy must be a SocialPolicyConfig')
         self.social_config = social_config if social_config is not None else SocialConfig()
         if not isinstance(self.social_config, SocialConfig):
             raise ValueError('social_config must be a SocialConfig')
         if social_sink is not None and not self.social_config.social_memory_enabled:
             raise ValueError('Social recording requires social_memory_enabled')
+        if social_policy_sink is not None and social_sink is not None:
+            raise ValueError('Choose legacy social CSV or versioned policy diagnostics')
+        if (social_policy_sink is not None or social_policy is not None and not social_policy.legacy) and not self.social_config.social_memory_enabled:
+            raise ValueError('Memory policy requires social memory enabled')
+        if social_sink is not None and social_policy is not None and not social_policy.legacy:
+            raise ValueError('Nonlegacy policies require --social-policy-csv, not legacy social CSV')
         from simulation.social_observer import SocialObserver
         from world.social_index import SocialIndex
         self.social_observer = SocialObserver(self.social_config, social_sink) if social_sink is not None else None
+        if social_policy_sink is not None:
+            from simulation.social_policy_observer import PolicyObserver
+            self.social_observer = PolicyObserver(self.social_config,social_policy,social_policy_sink)
         self._social_index = SocialIndex() if self.social_config.social_memory_enabled and not config.reproduction_enabled else None
         self._social_active = False
         self.event_sink = event_sink
@@ -110,6 +123,7 @@ class Simulation:
         vocal_learning_observer: VocalLearningObserver | None = None,
         brain_factory: Callable[[Random, Config], Brain] | None = None,
         social_config: SocialConfig | None = None, social_sink=None,
+        social_policy: SocialPolicyConfig | None = None, social_policy_sink=None,
     ) -> Simulation:
         settings = config if config is not None else Config()
         if seed is not None:
@@ -117,9 +131,13 @@ class Simulation:
         return cls(settings, event_sink=event_sink, cohort_sink=cohort_sink,
                    lineage_sink=lineage_sink, communication_sink=communication_sink,
                    vocal_learning_observer=vocal_learning_observer, brain_factory=brain_factory,
-                   social_config=social_config, social_sink=social_sink)
+                   social_config=social_config, social_sink=social_sink,
+                   social_policy=social_policy, social_policy_sink=social_policy_sink)
 
     def _new_human(self, **state):
+        if self.social_config.social_memory_enabled and self.social_policy is not None and not self.social_policy.legacy:
+            from agents.social_memory_policy import make_memory
+            return SocialHuman(**state,social_memory=make_memory(self.social_config,self.social_policy))
         if self.social_config.social_memory_enabled:
             return SocialHuman(**state, social_memory=SocialMemory(
                 self.social_config.social_memory_capacity, self.social_config.social_reunion_min_absence_ticks))

@@ -236,3 +236,32 @@ class SocialConfig:
             value = getattr(self, name)
             if type(value) is not int or value <= 0:
                 raise ValueError(f'{name} must be a positive integer')
+
+
+@dataclass(frozen=True, slots=True)
+class SocialPolicyConfig:
+    """Optional memory mechanics; preserves the original SocialConfig schema."""
+    formation_threshold: int = 1
+    eviction_policy: str = 'lru'
+    decay_tau: float = 100.0
+    strength_mode: str = 'log_contact_decay'
+    candidate_capacity: int | None = None
+
+    def __post_init__(self):
+        if type(self.formation_threshold) is not int or self.formation_threshold < 1:
+            raise ValueError('formation_threshold must be a positive integer')
+        if self.candidate_capacity is not None and (type(self.candidate_capacity) is not int or self.candidate_capacity < 1):
+            raise ValueError('candidate_capacity must be None or a positive integer')
+        if self.eviction_policy not in ('lru','contact_decay'):
+            raise ValueError("eviction_policy must be 'lru' or 'contact_decay'")
+        if type(self.decay_tau) not in (int,float) or not isfinite(self.decay_tau) or self.decay_tau <= 0:
+            raise ValueError('decay_tau must be finite and positive')
+        if self.strength_mode != 'log_contact_decay':
+            raise ValueError("strength_mode must be 'log_contact_decay'")
+
+    @property
+    def legacy(self):
+        return self.formation_threshold == 1 and self.eviction_policy == 'lru'
+
+    def resolved_candidate_capacity(self, capacity):
+        return capacity if self.candidate_capacity is None else self.candidate_capacity
