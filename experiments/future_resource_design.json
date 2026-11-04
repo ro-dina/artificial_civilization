@@ -1,0 +1,48 @@
+{
+  "version": "0.8.1",
+  "stage": "prospective analysis rules for already examined v080 archives; NOT confirmatory preregistration",
+  "archive_root": "data/resource_ecology_v080",
+  "ecologies": ["E0", "E1", "E2", "E3"],
+  "modes": ["A", "B", "C"],
+  "train_seeds": [3, 4],
+  "test_seeds": [0, 1, 2],
+  "train_policy": "Selected A calibration, all actual 200 ticks, separately by ecology",
+  "test_policy": "Actual A/B/C 500-tick primary; same-policy A and cross-policy B/C reported separately",
+  "candidates": {
+    "T1": "Food/water at current tile or current nearest visible individual's tile, future END tick t+5; reference fixed at sequential pre-action t",
+    "T2": "Food/water within Chebyshev radius 0/1/2 of frozen current position, future END tick t+1/5/10; radius0,h5 aliases T1 current, not counted twice",
+    "T3": "At current tile future END tick t+5: depletion conditional present now, recovery conditional absent now, strict quantity increase/decrease using exact recorded integers",
+    "T4": "Next actual food, water or either acquisition after current decision; own-opportunity time, death competing, administrative/gap censoring, no binary predictor",
+    "T5": "Any actual food/water/either acquisition within next5 or10 own decisions, excluding current; positive observed event, negative only full alive follow-up, otherwise death competing/admin/gap missing"
+  },
+  "environmental_alignment": "Only actual end-tick spatial snapshots may label t+h; absent snapshot is missing, never interpolated. Do not use future positions. Snapshot-aligned subset is a selected calendar population, not all decisions.",
+  "event_order": "Consumption precedes death on a future terminal decision, so acquisition wins a same-opportunity tie. Death on origin is competing at elapsed0. No acquisition after a missing gap is linked across that gap.",
+  "thresholds": {
+    "prevalence_min": 0.1,
+    "prevalence_max": 0.9,
+    "minimum_each_class": 100,
+    "minimum_agents": 100,
+    "minimum_training_cell": 20,
+    "minimum_common_coverage": 0.2,
+    "minimum_label_coverage": 0.5,
+    "minimum_mixed_baseline_strata": 2,
+    "minimum_class_in_mixed_stratum": 20,
+    "minimum_supported_social_tokens": 2,
+    "minimum_supported_memory_tokens": 2
+  },
+  "eligibility": "Per ecology/mode/seed; count, prevalence, actor, label coverage, conditional variation and M0/M1 common support must all pass. Memory additionally requires M0/M1/M2 common support and supported memory-token variation. A candidate qualifies for selection if at least one ecology passes all9 A/B/C seed cases. Environmental inference across calendar requires label coverage>=.5; sparse exact-snapshot subsets remain exploratory.",
+  "selection": {
+    "environment_priority": ["T1_water_current_h5", "T1_food_current_h5", "T2_water_r1_h5", "T2_food_r1_h5"],
+    "behavior_priority": ["T5_either_k10", "T5_water_k10", "T5_food_k10"],
+    "rule": "First qualifying candidate in fixed priority. At most one primary environment and one secondary behavior. If none qualifies, primary/secondary null; fixed first priority may be scored only as a clearly labelled retrospective exploratory diagnostic. Never choose based on model loss.",
+    "new_seed_confirmation": "Not automatic. Requires a qualified environmental target, a pre-outcome frozen separate confirmation plan and justified measurement coverage. No new simulation in archive audit or retrospective prediction. If no environmental target qualifies, STOP without new runs."
+  },
+  "models": {
+    "family": "Existing v074 Hierarchy, min20, Dirichlet strength5, binary classes; M0=X,A, M1=X,A,B, M2=X,A,B,RD with M1 parent. Independent X-only reference for environmental target.",
+    "forbidden_features": "Coordinates, exact resource quantities, patch geometry, future actions, outcomes, agent IDs, age/generation and future states are NOT predictor features",
+    "comparison": "Same labels/decision keys for every head; M0/M1 common support and stricter all-head common support separate. Unsupported memory effects NA, not zero. Raw all-decision scores remain exploratory backoff diagnostics.",
+    "metrics": ["log_loss", "binary_brier", "positive_probability_calibration", "equal_agent_log_loss", "equal_agent_brier", "per_seed_paired_differences", "common_coverage"],
+    "uncertainty": "Ecological seed is replicate; mean/sampleSD,min,max,n; no significance tests; temporal/agent dependence acknowledged"
+  },
+  "stopping": "One archive audit, one feasibility analysis, one frozen selection, one bounded retrospective comparison of at most two target definitions. No horizon/radius/threshold/model retuning, no ecological intervention. Negative or unavailable result acceptable."
+}

@@ -1,4 +1,4 @@
-# Artificial Civilization Simulation — v0.8.0
+# Artificial Civilization Simulation — v0.8.1
 
 A headless, standard-library-only artificial-life simulation for experiments in
 emergent behavior. v0.6 adds learned vocalization selection through a second,
@@ -15,6 +15,63 @@ whether they were heard. There are no communication rewards. Agriculture, econom
 technology, crafting, combat, culture, and civilization are not implemented.
 Renewable food is an environmental process, not farming. Higher-level phenomena
 remain research questions; there are no scripted civilization stages or outcomes.
+
+## Future resource information and target support — v0.8.1
+
+v0.8.1 is **archive analysis only**. It audits all36 v0.8.0 primary runs
+(540 streams,7,685,665 actual decisions) and evaluates37 prespecified candidate
+variants:28 environmental binary targets,6 behavioral binary targets and3
+time-to-next-acquisition outcomes. The simulator, Config, Q learning, resources,
+physiology, social memory and RNG implementation are byte-unchanged. No new
+scientific simulation or passive simulator instrumentation was run or added.
+
+The archive has ordered consumption and individual histories, but full resource
+grids only at end ticks0/100/200/300/400/500. Future resource labels therefore use
+only exact matching snapshots and frozen current coordinates. They are not
+interpolated or centered on future agent positions. Death is a competing event
+for future acquisition; incomplete follow-up is not a negative label.
+
+**Result:** future single-tile resources have useful marginal variation, but
+environmental labels cover only about1.1% of decision origins and conditional
+training support is sparse. Next-ten-acquisition outcomes are also variable,
+but M0/M1 common support is only about8–12% in the condition means, below the
+frozen20% requirement. **No primary environmental or secondary behavioral
+target qualified.** No new-seed confirmation was justified. Fixed fallback
+comparisons remain retrospective diagnostics; unsupported social and memory
+effects are NA, not zero. Existing seeds0/1/2 are not untouched holdouts.
+
+The rules were saved before feasibility/scoring and selection frozen after
+feasibility, before model comparison. One reporting-column collision was fixed
+without changing targets, models or thresholds; the original plan and source
+versions remain saved, and five pre-error score tables match the retry exactly.
+
+See [the v0.8.1 scientific report](docs/future_resource_information_v081.md) for
+field timing, candidate definitions, seed-level support, raw predictive results,
+selection and limitations. Data/receipts and compact sequence-linked labels are
+in `data/future_resource_v081/`; tables and9 supported PNGs are in
+`analysis/future_resource_v081/`. The complete suite passes658 tests (625 existing
++33 new). Historical v0.8.0 files are preserved.
+
+```bash
+# Post-processing only. Saved destinations are exclusive; use fresh paths.
+mkdir -p data/future_resource_v081_replay
+cp data/future_resource_v081/design_receipt.json data/future_resource_v081_replay/
+cp data/future_resource_v081/before.json data/future_resource_v081_replay/
+python3 -m experiments.future_resource_analysis --phase audit --root data/future_resource_v081_replay --output analysis/future_resource_v081_replay
+python3 -m experiments.future_resource_analysis --phase feasibility --root data/future_resource_v081_replay --output analysis/future_resource_v081_replay
+python3 -m experiments.future_resource_analysis --phase freeze --root data/future_resource_v081_replay --output analysis/future_resource_v081_replay
+python3 -m experiments.future_resource_tables --root data/future_resource_v081_replay --output analysis/future_resource_v081_replay
+python3 -m experiments.future_resource_prediction --root data/future_resource_v081_replay --output analysis/future_resource_v081_replay
+python3 -m experiments.future_resource_labels --root data/future_resource_v081_replay --output analysis/future_resource_v081_replay
+python3 -m experiments.future_resource_plots --root data/future_resource_v081_replay --output analysis/future_resource_v081_replay
+python3 -m unittest discover -s tests -q
+```
+
+Analysis uses the existing optional numpy/pandas/matplotlib environment. It does
+not establish resource information being exploited, survival benefit,
+cooperation, intentional communication or language. The next measurement should
+be dense, passive resource snapshots with adequate seed-separated support;
+bounded temporal resource uncertainty would be a separate future intervention.
 
 ## Resource scarcity and spatial localization — v0.8.0
 
