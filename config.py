@@ -221,6 +221,27 @@ SOCIAL_MEMORY_CAPACITY = 32
 SOCIAL_REUNION_MIN_ABSENCE_TICKS = 20
 
 
+@dataclass(frozen=True,slots=True)
+class ResourceEcologyConfig:
+    """Opt-in environmental manipulation; original Config/genomes stay identical."""
+    resource_supply_multiplier: float = 1.0
+    localization_strength: float = 0.0
+    patch_count: int = 4
+    patch_radius: int = 4
+
+    def __post_init__(self):
+        for name in ('resource_supply_multiplier','localization_strength'):
+            value=getattr(self,name)
+            if type(value) not in (int,float) or not isfinite(value) or not 0<=value<=1:
+                raise ValueError(name+' must be finite in [0,1]')
+        if self.localization_strength==1:raise ValueError('Localization requires positive background support (strength<1)')
+        if type(self.patch_count) is not int or self.patch_count<1:raise ValueError('patch_count must be a positive integer')
+        if type(self.patch_radius) is not int or self.patch_radius<0:raise ValueError('patch_radius must be a nonnegative integer')
+
+    @property
+    def legacy(self):return self.resource_supply_multiplier==1 and self.localization_strength==0
+
+
 @dataclass(frozen=True, slots=True)
 class SocialConfig:
     """Opt-in observational capability; separate to preserve legacy Config bytes."""

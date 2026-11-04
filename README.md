@@ -1,4 +1,4 @@
-# Artificial Civilization Simulation — v0.7.4
+# Artificial Civilization Simulation — v0.8.0
 
 A headless, standard-library-only artificial-life simulation for experiments in
 emergent behavior. v0.6 adds learned vocalization selection through a second,
@@ -15,6 +15,81 @@ whether they were heard. There are no communication rewards. Agriculture, econom
 technology, crafting, combat, culture, and civilization are not implemented.
 Renewable food is an environmental process, not farming. Higher-level phenomena
 remain research questions; there are no scripted civilization stages or outcomes.
+
+## Resource scarcity and spatial localization — v0.8.0
+
+v0.8.0 adds an **opt-in environmental experiment**. `ResourceEcologyConfig`
+scales food/water regeneration and optionally redistributes resource units over
+four persistent patches with a positive background everywhere. Default settings
+retain the exact legacy resource path. Physical/Vocal Q, capacity256, rewards,
+social encoders, reproduction, mutation and default CLI behavior are unchanged.
+Optional streaming diagnostics record actual acquisition/failure, individual
+death or censoring, resource budgets and privileged world measurements without
+passing those measurements to agents.
+
+```python
+from config import Config, ResourceEcologyConfig
+from simulation.simulation import Simulation
+
+sim = Simulation(
+    Config.evolution(brain="learning", random_seed=0),
+    resource_ecology=ResourceEcologyConfig(
+        resource_supply_multiplier=0.5, localization_strength=0.75,
+    ),
+)
+sim.step()
+```
+
+The bounded calibration used only A-mode ecology/viability on seeds3/4. The first
+candidates passed: supply multiplier0.5, localization strength0.75, four patches
+of Chebyshev radius4. All36 100-tick pilot cases passed the frozen gate; all36
+500-tick primary cases completed (E0–E3 × A/B/C × seeds0/1/2). No 1000-tick sweep
+or new nuisance controls were run. The18 pilot/primary E0 cases reproduce the
+archived complete state, RNG, action and statistics fingerprints exactly.
+
+**Results:** scarcity reduced final population and founder restricted survival;
+localization changed spatial access and increased access-rate inequality.
+Localized B/C had higher final population than A, but lower mean individual
+acquisition rates and founder restricted survival. A predictive resource benefit
+from social information was **not established**: immediate acquisition is already
+determined by original state plus action, nearby-resource targets are almost
+constant, and the held-out next-five-acquisition predictor did not improve with
+social features. Three seeds, state fragmentation, age/cohort composition and
+capacity-mediated supply feedback limit interpretation. These results do not
+demonstrate cooperation, intentional communication or language.
+
+Localization conserves initial totals and realizes every generated supply offer.
+Supply budgets match exactly **conditional on equal non-full tile counts**;
+different spatial saturation can reduce later offers. Attempted/realized supply,
+capacity censoring and resource-only audits are saved rather than assuming equal
+probabilities imply equal realized supply.
+
+See [the v0.8.0 scientific report](docs/resource_ecology_v080.md) for the frozen
+design, seed results, denominators, limitations, files and reproduction commands.
+Saved outputs are in `data/resource_ecology_v080/` and
+`analysis/resource_ecology_v080/` (16 primary PNGs, raw seed tables, paired
+contrasts, held-out predictions and verification receipts). These generated
+directories follow the existing git-ignore convention. Completed destinations
+are protected against overwrite; reproduce into a fresh root:
+
+```bash
+python3 -m unittest discover -s tests -q
+mkdir -p data/resource_ecology_v080_replay
+cp experiments/resource_ecology_design.json data/resource_ecology_v080_replay/preregistration.json
+python3 -m experiments.resource_ecology_experiments --root data/resource_ecology_v080_replay --phase calibrate
+python3 -m experiments.resource_ecology_experiments --root data/resource_ecology_v080_replay --phase pilot
+python3 -m experiments.resource_ecology_experiments --root data/resource_ecology_v080_replay --output-root analysis/resource_ecology_v080_replay --phase review
+# Only an entirely passing gate permits primary:
+python3 -m experiments.resource_ecology_experiments --root data/resource_ecology_v080_replay --phase primary
+python3 -m experiments.analyze_resource_ecology --root data/resource_ecology_v080_replay --phase primary --output analysis/resource_ecology_v080_replay/primary
+python3 -m experiments.resource_ecology_prediction --root data/resource_ecology_v080_replay --output analysis/resource_ecology_v080_replay/prediction
+python3 -m experiments.resource_ecology_plots --data-dir analysis/resource_ecology_v080_replay/primary --output analysis/resource_ecology_v080_replay/primary/figures
+```
+
+Analysis/plots use the existing optional pandas/numpy/matplotlib dependencies;
+simulation code remains standard-library-only. Historical v0.7.0–v0.7.4 outputs
+and tests are preserved. The complete current suite passes625 tests (602 existing
++23 new). No ecological parameters were retuned after evaluation.
 
 ## Nonstationary social controls and fixed experience — v0.7.4
 

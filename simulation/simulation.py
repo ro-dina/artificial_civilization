@@ -37,8 +37,14 @@ class Simulation:
                  social_config: SocialConfig | None = None, social_sink=None,
                  social_policy: SocialPolicyConfig | None = None, social_policy_sink=None,
                  social_learning: SocialLearningConfig | None = None, social_learning_observer=None,
-                 nuisance=None) -> None:
+                 nuisance=None,resource_ecology=None,resource_observer=None) -> None:
         self.config = config
+        from config import ResourceEcologyConfig
+        self.resource_ecology=resource_ecology if resource_ecology is not None else ResourceEcologyConfig()
+        if not isinstance(self.resource_ecology,ResourceEcologyConfig):raise ValueError('resource_ecology must be ResourceEcologyConfig')
+        self.resource_observer=resource_observer
+        if resource_observer is not None and resource_observer is not social_learning_observer:
+            raise ValueError('The resource observer must also be the physical learning observer')
         self.social_learning = social_learning if social_learning is not None else SocialLearningConfig()
         if not isinstance(self.social_learning, SocialLearningConfig):
             raise ValueError('social_learning must be a SocialLearningConfig')
@@ -100,6 +106,11 @@ class Simulation:
         seed = config.random_seed
         # Named streams isolate world generation, placement, ordering, and brains.
         self.world = World.generate(config, Random(f"{seed}:world"))
+        self.resource_system=None
+        if not self.resource_ecology.legacy:
+            from world.resource_ecology import ResourceEcology
+            self.resource_system=ResourceEcology(config,self.resource_ecology)
+            self.resource_system.initialize(self.world)
         spawn_rng = Random(f"{seed}:spawn")
         self._order_rng = Random(f"{seed}:order")
         self._offspring_rng = Random(f"{seed}:offspring")
@@ -143,7 +154,10 @@ class Simulation:
                 self.social_observer.life(0, human, 'founder')
             self.social_observer.tick_end(self.statistics)
         if self.social_learning_observer is not None:
+            if self.resource_observer is not None:self.resource_observer.bind(self)
             self.social_learning_observer.tick_end(self)
+        elif self.resource_observer is not None:
+            self.resource_observer.bind(self)
 
     @classmethod
     def create_default(
@@ -156,7 +170,7 @@ class Simulation:
         social_config: SocialConfig | None = None, social_sink=None,
         social_policy: SocialPolicyConfig | None = None, social_policy_sink=None,
         social_learning: SocialLearningConfig | None = None, social_learning_observer=None,
-        nuisance=None,
+        nuisance=None,resource_ecology=None,resource_observer=None,
     ) -> Simulation:
         settings = config if config is not None else Config()
         if seed is not None:
@@ -166,7 +180,8 @@ class Simulation:
                    vocal_learning_observer=vocal_learning_observer, brain_factory=brain_factory,
                    social_config=social_config, social_sink=social_sink,
                    social_policy=social_policy, social_policy_sink=social_policy_sink,
-                   social_learning=social_learning,social_learning_observer=social_learning_observer,nuisance=nuisance)
+                   social_learning=social_learning,social_learning_observer=social_learning_observer,nuisance=nuisance,
+                   resource_ecology=resource_ecology,resource_observer=resource_observer)
 
     def _new_human(self, **state):
         if self.social_config.social_memory_enabled and self.social_policy is not None and not self.social_policy.legacy:
@@ -256,7 +271,12 @@ class Simulation:
         self.tick += 1
         if self.cohorts is not None:
             self.cohorts.begin_tick()
-        food_regenerated, water_regenerated = self.world.regenerate(self.config, self._food_rng, self._water_rng)
+        if self.resource_observer is not None:self.resource_observer.before_regeneration(self)
+        if self.resource_system is None:
+            food_regenerated, water_regenerated = self.world.regenerate(self.config, self._food_rng, self._water_rng)
+        else:
+            food_regenerated, water_regenerated = self.resource_system.regenerate(self.world,self._food_rng,self._water_rng)
+        if self.resource_observer is not None:self.resource_observer.after_regeneration(self,food_regenerated,water_regenerated)
         if self.communication_observer is not None:
             self.communication_observer.begin_tick(self.agents)
         order = list(self.agents)
@@ -350,6 +370,8 @@ class Simulation:
             observe_outcome = getattr(human.brain, "observe_outcome", None)
             if observe_outcome is not None:
                 observe_outcome(Physiology.capture(human))
+            if self.resource_observer is not None:
+                self.resource_observer.resource_outcome(human,decision,cause,food,water,success)
             if self.social_learning_observer is not None:
                 self.social_learning_observer.outcome(human,decision,cause)
             if self.vocal_learning_observer is not None and cause is not None:

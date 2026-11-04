@@ -1,0 +1,162 @@
+{
+  "version": "0.8.0",
+  "baseline_commit": "43f954bb162513844463b955211b70e826f16c97",
+  "hypotheses": {
+    "H1": "Scarcity may increase search difficulty/resource-related death; not assumed to lower final population.",
+    "H2": "Localization may concentrate resources and encounters.",
+    "H3": "Others may cue resources or competition; no guaranteed benefit.",
+    "H4": "Remembered status may add information, but coarse memory stores no resource map.",
+    "H5": "Scarcity/localization may interact; all hypotheses exploratory at eco n3."
+  },
+  "actual_legacy": "40x30 tiles, food/water integer units, evolution600 initial each, capacity5 each, p=.02 per nonfull tile at tick start. Each trial draws legacy stream only if nonfull; success adds1. EAT/DRINK consume actual0/1, relief30, food energy20 in evolution, unchanged normalized physiological reward. A originalX, B+11 social token,C+37 valid pair, physical/vocalLRU256 unchanged.",
+  "factorial": {
+    "E0": [
+      1.0,
+      0.0
+    ],
+    "E1": [
+      "chosen_scarcity",
+      0.0
+    ],
+    "E2": [
+      1.0,
+      "chosen_localization"
+    ],
+    "E3": [
+      "chosen_scarcity",
+      "chosen_localization"
+    ]
+  },
+  "mechanism": "Scarcity scales only food/water regeneration p by one multiplier. Localization preserves initial totals600 each, shared4 fixed Chebyshev-square patches radius4, positive uniform background; weights=(1-strength)/N+strength*mask/patch_cells. Generate offers using the original nonfull-cell Bernoulli trials at scaled p, then relocate each offer among weighted nonfull recipients without rejection. Original World path unchanged E0; E1 uses exact legacy algorithm with p scaled. Geometry/placement RNGs independent; geometry shared food/water, placement RNGs separate.",
+  "supply_equality": "For identical eligibility masks and seed/rates, offer counts/legacy budget RNG states match exactly; every offer realized (positive background, enough capacity). Different spatial saturation/consumption causes different eligible counts and realized budgets across ecologies. Record potential expected N*p, eligible expected, capacity-censored expectation, actual offers, realized, rejected; no assertion that equal p means equal realized supply. Resource-only audits absent/fixed/reset consumption quantify deviations.",
+  "calibration": {
+    "seeds": [
+      3,
+      4
+    ],
+    "horizon": 200,
+    "learning_mode": "A only, no B/C ranking",
+    "scarcity_candidates": [
+      0.5,
+      0.25
+    ],
+    "localization_candidates": [
+      0.75,
+      0.5
+    ],
+    "patch_count": 4,
+    "patch_radius": 4,
+    "select": "First candidate satisfying manipulation/viability; no outcome benefit tuning. BaselineE0 two runs; E1 candidates bounded2 each; E2 bounded2 each; validate E3 two runs, no further search.",
+    "viability": "Each candidate: population at100>=20 and final200>=10; food and water actually consumed>=20 each, decisions>=5000. Failure blocks evaluation, not a social-benefit criterion.",
+    "scarcity": "Mean realized regeneration<=.8 baseline for EACH food/water; mean stocks ticks100..200 differ>=10% from baseline for at least one resource (report both directions). No assumed monotone population effect.",
+    "localization": "Initial effective occupied cells<=.8 corresponding E0 for food AND water; all normalized weights positive; initial totals identical; reset-consumption audit offers/realization exact, reject0. No social effect criterion."
+  },
+  "primary_outcomes": [
+    "equal-individual acquisitions/opportunity within run (and aggregate numerator/exposure)",
+    "founder RMST to administrative horizon (death or censor flag, no survivors treated as deaths)",
+    "starvation+dehydration per agent opportunity",
+    "final population"
+  ],
+  "secondary": [
+    "births",
+    "other death causes",
+    "food/water consumption",
+    "mean actual physiology reward",
+    "access rate Gini among actors",
+    "patch density",
+    "contact rates",
+    "actual movement",
+    "state novelty/revisits",
+    "Q occupancy/evictions/probes",
+    "vocal emission/hearing/masking/Q occupancy"
+  ],
+  "survival": "Founders followed from0 to H, founder restricted survival is mean(min(observed death time,H)); survivors administratively right-censored H. Newborn follow-up/censoring reported separately; no naive newborn lifespan comparison.",
+  "pilot": {
+    "ticks": 100,
+    "ecologies": [
+      "E0",
+      "E1",
+      "E2",
+      "E3"
+    ],
+    "modes": [
+      "A",
+      "B",
+      "C"
+    ],
+    "seeds": [
+      0,
+      1,
+      2
+    ],
+    "runs": 36,
+    "reuse": "E0 archived ecological outcomes reused/verified, necessary instrumented reruns because no actual consumption outcome fields in v074 archive."
+  },
+  "failure_gates": [
+    "Any E0 complete state/RNG/action/statistics mismatch blocks.",
+    "Any conservation/capacity/offer-realization inconsistency or nonfinite reward blocks.",
+    "Acquisitions must match aggregate food/water, all decision outcomes covered, all life records match initial+births, Qupdates/statistics agree.",
+    "All cases run to100; each has population>=10, at least5000 agent opportunities, food and water consumption>=20. Otherwise immediate collapse/insufficient exposure blocks primary.",
+    "Every reset supply audit must show exact proposal and gain equality; all capacity-censoring budgets disclosed.",
+    "No gate depends on B/C improving over A."
+  ],
+  "primary": {
+    "ticks": 500,
+    "seeds": [
+      0,
+      1,
+      2
+    ],
+    "ecologies": [
+      "E0",
+      "E1",
+      "E2",
+      "E3"
+    ],
+    "modes": [
+      "A",
+      "B",
+      "C"
+    ],
+    "runs": 36,
+    "only_if_pilot_all_gates_pass": true,
+    "no1000ticks": true
+  },
+  "contrasts": {
+    "ecology": [
+      "E1-E0",
+      "E2-E0",
+      "E3-E1",
+      "E3-E2"
+    ],
+    "social": [
+      "B-A",
+      "C-B",
+      "C-A"
+    ],
+    "interaction": "(E3-E2)-(E1-E0), separately by mode, then moderation B-A and C-B. Per-seed effects, equal-seed mean/sample SD,min,max,n, no significance claims."
+  },
+  "prediction": {
+    "optional_bounded": true,
+    "train_seeds": [
+      3,
+      4
+    ],
+    "test_seeds": [
+      0,
+      1,
+      2
+    ],
+    "source_training": "Selected A calibration200, passive actual B/C features; no new B/C calibration runs needed. Test actual A/B/C same-ecology first200 primary ticks; behavior-policy distribution shift reported.",
+    "model": "v074 frozen hierarchical count predictor, min20,strength5; X,A;X,B,A;X,B,RD,A. Same held-out decisions, all/common support; no nuisance controls.",
+    "targets": [
+      "immediate reward bins <=-.1,(-.1,0),>=0",
+      "actual acquisition on attempted eating/drinking",
+      "tick-start nearest-food/water within3 (privileged, never Q-visible)",
+      "next5 ACTUAL own-decision acquisitions, censored if fewer5; no absorbing reward padding"
+    ],
+    "limits": "observational action-conditioned prediction, early200 only, sparse support, independent eco n3; not causal policy value. Memory contrast holds actual B fixed."
+  },
+  "diagnostics": "Distances Chebyshev on frozen post-regeneration tick-start world; current pre-action here/nearest-visible-neighbor resource amounts exact sequential snapshot. Geometry/privileged values never passed to brains. Individuals only scalar histories while living, streamed on death/end. No detailed history by default.",
+  "stopping": "Freeze selected parameters before evaluation. Do not reopen nuisance-control development or tune on primary results. No ecological benefit/attraction/cooperation/communication claim from proximity or population alone."
+}
