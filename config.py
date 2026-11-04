@@ -265,3 +265,13 @@ class SocialPolicyConfig:
 
     def resolved_candidate_capacity(self, capacity):
         return capacity if self.candidate_capacity is None else self.candidate_capacity
+
+
+@dataclass(frozen=True, slots=True)
+class SocialLearningConfig:
+    """Physical-head information only; old configuration schemas stay intact."""
+    mode: str = 'none'
+
+    def __post_init__(self):
+        if self.mode not in ('none', 'perception', 'memory'):
+            raise ValueError("social learning mode must be none, perception or memory")

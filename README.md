@@ -1,4 +1,4 @@
-# Artificial Civilization Simulation — v0.7.1
+# Artificial Civilization Simulation — v0.7.2
 
 A headless, standard-library-only artificial-life simulation for experiments in
 emergent behavior. v0.6 adds learned vocalization selection through a second,
@@ -15,6 +15,122 @@ whether they were heard. There are no communication rewards. Agriculture, econom
 technology, crafting, combat, culture, and civilization are not implemented.
 Renewable food is an environmental process, not farming. Higher-level phenomena
 remain research questions; there are no scripted civilization stages or outcomes.
+
+## Social Information in Physical Action Learning — v0.7.2
+
+v0.7.2 optionally adds coarse visual social features to **Physical Q only**.
+The original `none` mode remains the default and preserves v0.7.1 behavior.
+Vocal Q still uses exactly the old physiological/resource/auditory state.
+There are no new actions, rewards, social reproduction preferences, vocal
+identities, signal meanings or ecological rules. Visual recognition is imposed,
+not learned; behavior near others does not establish friendship or cooperation.
+
+The independent frozen `SocialLearningConfig(mode="none")` supports `none`,
+`perception` and `memory`. The existing Config, SocialConfig and SocialPolicyConfig
+schemas are unchanged. Perception mode does not require social memory; memory
+mode explicitly requires it. New modes require the built-in LearningBrain.
+
+* **A / none:** unchanged physical key, optional passive social memory.
+* **B / perception:** one token combines visible count (0, 1, ≥2) and direction
+  to the nearest visible individual. Token 0 means empty; 1–5 mean exactly one
+  in HERE/N/S/E/W; 6–10 mean ≥2 with those directions. This adds 11 possible
+  social combinations.
+* **C / memory:** B's identical token plus direction to the nearest remembered
+  visible individual (0=NONE, 1–5=HERE/N/S/E/W). No redundant presence bit.
+  There are 37 structurally possible social combinations (66 rectangular slots).
+
+Targets minimize Chebyshev distance, then individual ID. Projection uses the
+dominant axis, vertical on diagonal ties. IDs determine ties internally but
+never enter the physical Q suffix. The new Brain-facing observation contains
+only coarse features, the original resource tiles and original auditory percept.
+Memory status is captured **before** the same visual batch commits/refreshes
+entries: the first/fifth committing sighting is still unremembered for that
+decision. Temporary candidates are not remembered. No second visual query occurs.
+
+```bash
+# B: social perception without social memory
+python3 main.py --mode evolution --brain learning --seed 0 --ticks 100 \
+  --social-learning-mode perception \
+  --social-learning-csv data/social_learning_v072/example_B.csv.gz
+
+# C: social perception plus previously committed visual memory
+python3 main.py --mode evolution --brain learning --seed 0 --ticks 100 \
+  --social-memory --social-learning-mode memory \
+  --social-learning-csv data/social_learning_v072/example_C.csv.gz
+
+# Explicit, exclusive stages; review pilot before primary.
+python3 -m experiments.social_learning_experiments --phase pilot
+python3 -m experiments.social_learning_experiments --phase primary
+# Optional after primary checks: C-LRU vs C-threshold5/decay, candidate budget 32.
+python3 -m experiments.social_learning_experiments --phase memory_policy
+# Optional B/C physical Q capacity 1024 vs unchanged primary capacity 256.
+python3 -m experiments.social_learning_experiments --phase q_capacity
+
+# Post-processing only, fresh destination; never starts a simulation.
+python3 -m experiments.analyze_social_learning \
+  --data-dir data/social_learning_v072/primary \
+  --output-dir analysis/social_learning_v072/reanalysis
+```
+
+The dedicated output is eight streams plus a completion sidecar: tick-level
+ecology, window-level Q/exposure/movement counters, grouped action contexts,
+original-state catalog, resource/need/age/count strata, distributions, read-only
+Q-policy probes and vocal counts. Recording is optional and consumes no RNG.
+Actual allocation/eviction hooks include pending-row recreation and terminal
+updates. Q capacity stays 256 in the primary experiment; novelty, occupancy,
+visit frequencies, updates and churn are measured explicitly.
+
+Movement uses actual before/after actor positions against a target frozen at its
+single pre-action visual position. Stationary/boundary-blocked actions are separate;
+Chebyshev-distance plateaus are not called approach. Contact opportunities include
+dying actors and exclude birth-tick newborns. Death ages and surviving censored
+ages are separated. Current hearing, masked sound and emitted signals are distinct.
+
+Optional probes compare **observed retained rows in the same living brain with
+the same exact original state**, ≥2/5 visits in the current row residence and ≥1
+TD update. No synthetic prior rows, allocation, LRU refresh or RNG draws occur.
+Memory-only probes also hold B's visible token fixed. Grouped observed action
+associations are a separate diagnostic; neither proves a social preference.
+
+New modes use their own versioned diagnostics; the CLI refuses legacy social
+recording formats that cannot describe the added learning configuration. The
+staged runner uses A/B/C × seeds 0/1/2 at 100 and then 500 ticks. Unlike v0.7.1,
+new social inputs can change actions and the entire ecological encounter history.
+Paired seeds are replications, not identical-history controls. Output and metadata
+collisions are refused, and no 1000-tick factorial sweep runs automatically.
+
+See [the v0.7.2 report](docs/social_information_learning_v072.md) for control flow,
+compatibility, executed conditions, per-seed results, capacity confounds and limits.
+
+The completed primary comparison is 500 ticks × seeds 0/1/2, with Q capacity
+256 in both heads and passive immediate-LRU social memory K=32 throughout:
+
+| Mode | Final population, mean ± sample SD | First-state decisions (%) | Toward fraction of actual target moves (%) |
+|---|---:|---:|---:|
+| A / none | 818.0 ± 17.1 | 68.200 ± 0.110 | 6.974 ± 0.036 |
+| B / perception | 809.0 ± 22.5 | 80.205 ± 0.322 | 6.555 ± 0.153 |
+| C / memory | 805.0 ± 38.4 | 80.688 ± 0.357 | 6.579 ± 0.076 |
+
+Action trajectories and Q preferences change reproducibly. B/C have more births
+and deaths in every seed, with no demonstrated ecological benefit. Q eviction
+is below 0.43% of primary decisions; sparse revisits remain a confound even
+without capacity pressure. Greater co-location also makes the movement rates
+unsuitable as evidence of attraction or avoidance.
+
+Trained retained Q rows show general social-input dependence on a small supported
+subset. Primary C has no memory-only row pairs meeting the declared five-visit
+criterion at any checkpoint. The optional N5+decay memory variant produces a few
+supported memory-only pairs at intermediate checkpoints; this does not establish
+population-wide predictive value. Vocal production remains near 94.1%, and
+hearing changes indirectly. No communication or language emergence is claimed.
+
+**554 tests pass**, preserving all 523 previous tests. A's full 500-tick state,
+including both Q heads, private social LRU and RNG, matches archived v0.7.1 for
+all three seeds. Actual pilot replay matches 81 raw/sidecar plus 27 analysis files
+byte-for-byte. Primary runtime was about 11.4 minutes; the optional three-run
+memory-policy comparison took about 4.6 minutes. Q-capacity sensitivity is
+available but was not executed. Results and provenance are saved in the versioned
+directories above, without overwriting previous studies.
 
 ## Social Memory Formation, Retention and Forgetting — v0.7.1
 

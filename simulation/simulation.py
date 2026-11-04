@@ -10,7 +10,7 @@ from agents.human import Human, SocialHuman
 from agents.social_memory import SocialMemory
 from agents.learning import LearningBrain, Physiology
 from agents.observation import Observation, SocialObservation, TileObservation
-from config import Config, SocialConfig, SocialPolicyConfig, REPRODUCTIVE_TYPES
+from config import Config, SocialConfig, SocialPolicyConfig, SocialLearningConfig, REPRODUCTIVE_TYPES
 from simulation.cohorts import CohortSink, PerceptionCohorts
 from simulation.communication_observer import CommunicationObserver, CommunicationSink
 from simulation.vocal_learning_observer import VocalLearningObserver
@@ -35,14 +35,26 @@ class Simulation:
                  vocal_learning_observer: VocalLearningObserver | None = None,
                  brain_factory: Callable[[Random, Config], Brain] | None = None,
                  social_config: SocialConfig | None = None, social_sink=None,
-                 social_policy: SocialPolicyConfig | None = None, social_policy_sink=None) -> None:
+                 social_policy: SocialPolicyConfig | None = None, social_policy_sink=None,
+                 social_learning: SocialLearningConfig | None = None, social_learning_observer=None) -> None:
         self.config = config
+        self.social_learning = social_learning if social_learning is not None else SocialLearningConfig()
+        if not isinstance(self.social_learning, SocialLearningConfig):
+            raise ValueError('social_learning must be a SocialLearningConfig')
+        if self.social_learning.mode != 'none' and (config.brain != 'learning' or brain_factory is not None):
+            raise ValueError('Social learning inputs require the built-in learning brain')
+        self.social_learning_observer = social_learning_observer
+        if social_learning_observer is not None and config.brain != 'learning':
+            raise ValueError('Physical learning diagnostics require learning brains')
         self.social_policy = social_policy
         if social_policy is not None and not isinstance(social_policy, SocialPolicyConfig):
             raise ValueError('social_policy must be a SocialPolicyConfig')
         self.social_config = social_config if social_config is not None else SocialConfig()
         if not isinstance(self.social_config, SocialConfig):
             raise ValueError('social_config must be a SocialConfig')
+        if self.social_learning.mode == 'memory' and not self.social_config.social_memory_enabled:
+            raise ValueError('Memory learning input requires social memory enabled')
+        self._social_vision = self.social_config.social_memory_enabled or self.social_learning.mode != 'none'
         if social_sink is not None and not self.social_config.social_memory_enabled:
             raise ValueError('Social recording requires social_memory_enabled')
         if social_policy_sink is not None and social_sink is not None:
@@ -57,7 +69,7 @@ class Simulation:
         if social_policy_sink is not None:
             from simulation.social_policy_observer import PolicyObserver
             self.social_observer = PolicyObserver(self.social_config,social_policy,social_policy_sink)
-        self._social_index = SocialIndex() if self.social_config.social_memory_enabled and not config.reproduction_enabled else None
+        self._social_index = SocialIndex() if self._social_vision and not config.reproduction_enabled else None
         self._social_active = False
         self.event_sink = event_sink
         self.cohort_sink = cohort_sink
@@ -66,7 +78,11 @@ class Simulation:
         self.communication_observer = CommunicationObserver(config, communication_sink) if communication_sink is not None else None
         self.vocal_learning_observer = vocal_learning_observer
         if brain_factory is None:
-            brain_factory = LearningBrain if config.brain == "learning" else RandomBrain
+            if self.social_learning.mode != 'none':
+                from agents.social_learning import SocialLearningBrain
+                brain_factory = lambda rng, cfg: SocialLearningBrain(rng,cfg,self.social_learning.mode)
+            else:
+                brain_factory = LearningBrain if config.brain == "learning" else RandomBrain
         self.brain_factory = brain_factory
         seed = config.random_seed
         # Named streams isolate world generation, placement, ordering, and brains.
@@ -113,6 +129,8 @@ class Simulation:
             for human in self.agents:
                 self.social_observer.life(0, human, 'founder')
             self.social_observer.tick_end(self.statistics)
+        if self.social_learning_observer is not None:
+            self.social_learning_observer.tick_end(self)
 
     @classmethod
     def create_default(
@@ -124,6 +142,7 @@ class Simulation:
         brain_factory: Callable[[Random, Config], Brain] | None = None,
         social_config: SocialConfig | None = None, social_sink=None,
         social_policy: SocialPolicyConfig | None = None, social_policy_sink=None,
+        social_learning: SocialLearningConfig | None = None, social_learning_observer=None,
     ) -> Simulation:
         settings = config if config is not None else Config()
         if seed is not None:
@@ -132,7 +151,8 @@ class Simulation:
                    lineage_sink=lineage_sink, communication_sink=communication_sink,
                    vocal_learning_observer=vocal_learning_observer, brain_factory=brain_factory,
                    social_config=social_config, social_sink=social_sink,
-                   social_policy=social_policy, social_policy_sink=social_policy_sink)
+                   social_policy=social_policy, social_policy_sink=social_policy_sink,
+                   social_learning=social_learning,social_learning_observer=social_learning_observer)
 
     def _new_human(self, **state):
         if self.social_config.social_memory_enabled and self.social_policy is not None and not self.social_policy.legacy:
@@ -148,12 +168,22 @@ class Simulation:
         return len(self.agents)
 
     def observe(self, human: Human) -> Observation:
+        return self._decision_observation(human,self._observe(human))
+
+    def _decision_observation(self, human, observation):
+        if self.social_learning.mode == 'none':
+            return observation
+        from agents.social_learning import extract,learning_observation
+        return learning_observation(observation,extract(observation.individuals,getattr(human,'social_memory',None),
+                                   include_memory=self.social_learning.mode == 'memory'))
+
+    def _observe(self, human: Human) -> Observation:
         tiles = tuple(
             TileObservation(x - human.x, y - human.y, tile.food, tile.water)
             for x, y, tile in self.world.nearby_tiles(human.x, human.y, human.genome.perception_radius)
         )
         auditory = self.communication.perceive(human.id, human.x, human.y)
-        if self.social_config.social_memory_enabled:
+        if self._social_vision:
             if self._social_active:
                 index = self.reproduction if self.config.reproduction_enabled else self._social_index
             else:
@@ -216,7 +246,7 @@ class Simulation:
             self.reproduction.begin_tick(order)
         if self._social_index is not None:
             self._social_index.begin_tick(order)
-        self._social_active = self.social_config.social_memory_enabled
+        self._social_active = self._social_vision
         deaths = food_consumed = water_consumed = signals_emitted = 0
         reproduction_attempts = population_limit_blocks = 0
         learning_updates = exploratory_actions = exploitative_actions = 0
@@ -226,7 +256,10 @@ class Simulation:
         for human in order:
             learner = human.brain if isinstance(human.brain, LearningBrain) else None
             previous_updates = learner.learning_updates if learner is not None else 0
-            observation = self.observe(human)
+            observation = self.observe(human) if self.social_learning.mode == 'none' else self._observe(human)
+            decision_observation = self._decision_observation(human,observation)
+            if self.social_learning_observer is not None:
+                self.social_learning_observer.begin(human,observation,self.tick)
             if self.social_config.social_memory_enabled:
                 social_update = human.social_memory.observe(
                     tuple(i.individual_id for i in observation.individuals), self.tick,
@@ -240,7 +273,7 @@ class Simulation:
                           "thirst": human.thirst, "energy": human.energy}
             if self.vocal_learning_observer is not None:
                 self.vocal_learning_observer.begin(human, self.tick)
-            decision = human.brain.choose_action(human, observation)
+            decision = human.brain.choose_action(human, decision_observation)
             if self.vocal_learning_observer is not None and (learner is None or not learner.learning_controls_vocalization):
                 self.vocal_learning_observer.not_applicable()
             if not isinstance(decision, Decision) or not isinstance(decision.action, Action):
@@ -293,6 +326,8 @@ class Simulation:
             observe_outcome = getattr(human.brain, "observe_outcome", None)
             if observe_outcome is not None:
                 observe_outcome(Physiology.capture(human))
+            if self.social_learning_observer is not None:
+                self.social_learning_observer.outcome(human,decision,cause)
             if self.vocal_learning_observer is not None and cause is not None:
                 self.vocal_learning_observer.end_agent(human, self.tick, "death")
             if learner is not None:
@@ -305,7 +340,7 @@ class Simulation:
                     tick=self.tick, kind="agent_step", agent_id=human.id,
                     x=start_x, y=start_y,
                     details={
-                        "before": before, "observation": observation,
+                        "before": before, "observation": decision_observation,
                         "auditory_diagnostics": self.communication.diagnostics(human.id, start_x, start_y, self.tick),
                         "auditory_resolution": self.communication.resolution_diagnostics(human.id, start_x, start_y),
                         **({"auditory_learning": learner.auditory_diagnostics(self.tick)} if learner is not None else {}),
@@ -379,6 +414,8 @@ class Simulation:
             self.cohort_sink(self.cohorts.snapshot(self.tick, self.agents))
         if self.social_observer is not None:
             self.social_observer.tick_end(self.statistics)
+        if self.social_learning_observer is not None:
+            self.social_learning_observer.tick_end(self)
         return self.statistics
 
     def print_status(self) -> None:

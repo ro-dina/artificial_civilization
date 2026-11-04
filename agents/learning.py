@@ -163,7 +163,11 @@ class LearningBrain(PrimitiveStateEncoder):
 
     def action_values(self, body: Physiology, observation: Observation) -> tuple[float, ...]:
         """Read-only diagnostic; unseen states have all-zero values and are not stored."""
-        return tuple(self._values.get(self.state(body, observation), (0.0,) * len(self.actions)))
+        return tuple(self._values.get(self.physical_state(body, observation), (0.0,) * len(self.actions)))
+
+    def physical_state(self, body: Physiology, observation: Observation, original=None) -> State:
+        """Default exact legacy key; optional subclasses extend only this head."""
+        return self.state(body, observation) if original is None else original
 
     def inspect_physical_q(self, state: State) -> tuple[bool, tuple[float, ...]]:
         """Read one encoded row without allocation, recency changes or learning.
@@ -176,22 +180,32 @@ class LearningBrain(PrimitiveStateEncoder):
                 tuple(values) if values is not None else (0.0,) * len(self.actions))
 
     def _remember(self, state: State) -> list[float]:
+        observer = getattr(self, '_physical_observer', None)
         if state not in self._values:
             if len(self._values) == self.capacity:
-                self._values.popitem(last=False)
+                evicted, _ = self._values.popitem(last=False)
+                if observer is not None:
+                    observer.evicted(evicted)
             self._values[state] = [0.0] * len(self.actions)
+            if observer is not None:
+                observer.allocated(state)
         self._values.move_to_end(state)
         return self._values[state]
 
-    def _update(self, next_value: float) -> None:
+    def _update(self, next_value: float, terminal: bool = False) -> None:
         transition = self._pending
         if transition is None or transition.reward is None:
             raise RuntimeError("Learning requires a completed action outcome")
         values = self._remember(transition.state)
         index = transition.action_index
         target = transition.reward + self.discount * next_value
+        observer = getattr(self, '_physical_observer', None)
+        if observer is not None:
+            old_value = values[index]
         values[index] += self.learning_rate * (target - values[index])
         self.learning_updates += 1
+        if observer is not None:
+            observer.updated(transition.state, index, old_value, values[index], terminal)
         self._pending = None
 
     def _remember_vocal(self, state: State) -> list[float]:
@@ -227,7 +241,11 @@ class LearningBrain(PrimitiveStateEncoder):
             raise RuntimeError("Learning requires a completed action outcome")
         self.auditory_memory.update(observation.auditory, observation.tick)
         body = Physiology.capture(human)
-        state = self.state(body, observation)
+        vocal_state = self.state(body, observation)
+        state = self.physical_state(body, observation, vocal_state)
+        observer = getattr(self, '_physical_observer', None)
+        if observer is not None:
+            observer.start_state(state, state in self._values)
         if self._pending is not None:
             next_value = max(self._values.get(state, (0.0,) * len(self.actions)))
             self._update(next_value)
@@ -241,15 +259,17 @@ class LearningBrain(PrimitiveStateEncoder):
             index = self.rng.choice([i for i, value in enumerate(values) if value == best])
             self.exploitative_actions += 1
         self._pending = Transition(state, index, body)
+        if observer is not None:
+            observer.selected(self, state, values, index)
         if self.learning_controls_vocalization:
             if self._vocal_observer is not None:
-                self._vocal_observer.start_state(state, state in self._vocal_values)
+                self._vocal_observer.start_state(vocal_state, vocal_state in self._vocal_values)
             if self._vocal_pending is not None:
-                next_value = max(self._vocal_values.get(state, (0.0,) * len(self.vocal_actions)))
+                next_value = max(self._vocal_values.get(vocal_state, (0.0,) * len(self.vocal_actions)))
                 self._update_vocal(next_value)
             if self._vocal_observer is not None:
-                self._vocal_observer.selecting(state in self._vocal_values)
-            vocal_values = self._remember_vocal(state)
+                self._vocal_observer.selecting(vocal_state in self._vocal_values)
+            vocal_values = self._remember_vocal(vocal_state)
             self.last_vocal_exploratory = self.vocal_rng.random() < self.epsilon
             if self.last_vocal_exploratory:
                 vocal_index = self.vocal_rng.randrange(len(self.vocal_actions))
@@ -258,11 +278,11 @@ class LearningBrain(PrimitiveStateEncoder):
                 best = max(vocal_values)
                 vocal_index = self.vocal_rng.choice([i for i, value in enumerate(vocal_values) if value == best])
                 self.vocal_exploitative_actions += 1
-            self._vocal_pending = Transition(state, vocal_index, body)
+            self._vocal_pending = Transition(vocal_state, vocal_index, body)
             self.last_vocal_action = self.vocal_actions[vocal_index]
             self.last_vocal_value = vocal_values[vocal_index]
             if self._vocal_observer is not None:
-                self._vocal_observer.selected(self, state, vocal_values, vocal_index)
+                self._vocal_observer.selected(self, vocal_state, vocal_values, vocal_index)
             signal = self.last_vocal_action.signal_id
         else:
             signal = None
@@ -283,6 +303,6 @@ class LearningBrain(PrimitiveStateEncoder):
         if self._vocal_pending is not None:
             self._vocal_pending.reward = reward  # Compute once, share exactly; no hearing feedback.
         if not after.alive:
-            self._update(0.0)
+            self._update(0.0, terminal=True)
             if self._vocal_pending is not None:
                 self._update_vocal(0.0, terminal=True)
