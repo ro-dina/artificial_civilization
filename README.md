@@ -1,4 +1,4 @@
-# Artificial Civilization Simulation — v0.7.2
+# Artificial Civilization Simulation — v0.7.3
 
 A headless, standard-library-only artificial-life simulation for experiments in
 emergent behavior. v0.6 adds learned vocalization selection through a second,
@@ -15,6 +15,79 @@ whether they were heard. There are no communication rewards. Agriculture, econom
 technology, crafting, combat, culture, and civilization are not implemented.
 Renewable food is an environmental process, not farming. Higher-level phenomena
 remain research questions; there are no scripted civilization stages or outcomes.
+
+## Social information value controls — v0.7.3
+
+This optional experiment separates adding state dimensions from adding useful
+social information. A/B/C retain their v0.7.2 definitions. D/E append an independent
+nuisance token (at most 11/37 categories) to **Physical Q only**. The original
+encoder, Vocal Q, rewards, actions, Q initialization, update order and capacity
+256 are unchanged. The main Config schemas and default simulation are unchanged.
+
+`agents.nuisance.NuisanceConfig` holds a frozen probability vector, a hold
+probability and a separate nuisance seed. Each brain receives an independent
+substream assigned at construction, never seeded by identity, age, position,
+tick or social information. A stationary initial token is held with probability
+alpha on each subsequent own decision opportunity; otherwise a new categorical
+token is drawn. Parameters never read the live world. Read-only previews draw
+nothing. Changing the physical representation can change policy and ecology;
+exogenous random innovations do not guarantee zero empirical correlation after
+selection and policy feedback.
+
+The archive contains category counts but lacks ordered token runs and immediate
+decision rewards. Optional v0.7.3 diagnostics add these **actual** outcomes, with
+original-state catalogs, retained-row visit/update histograms, and lifetime TD
+update histograms. No transitions are inferred from aggregate data. Final living
+transitions are censored rather than assigned fabricated terminal rewards.
+Instrumentation-only reference runs must match the archived full fingerprints.
+
+Experiments use ecological seeds 3/4 for feature-only calibration, then freeze
+models before evaluating seeds 0/1/2. No ecological performance or reward enters
+calibration. Category count alone is not a successful match: empirical entropy,
+conditional entropy, persistence, first-state fraction and repeat visits are
+checked against predeclared tolerances. A reviewed pilot is required before the
+500-tick primary; poor matching must remain visible and may block it.
+
+```bash
+python3 -m unittest discover -s tests -v
+python3 -m experiments.information_controls --phase calibration
+python3 -m experiments.calibrate_information_controls
+python3 -m experiments.information_controls --phase references
+python3 -m experiments.information_controls --phase pilot
+python3 -m experiments.analyze_information_controls
+# Review matching before recording a primary-allowed receipt. No automatic bypass.
+python3 -m experiments.information_controls --phase primary
+python3 -m experiments.information_controls --phase robustness
+python3 -m experiments.analyze_information_controls --phase primary \
+  --output analysis/social_learning_v073/primary
+python3 -m experiments.controls_followup --include-replay
+```
+
+These commands refuse existing destinations. New raw outputs go to
+`data/social_learning_v073/`; CSVs, figures and manifests go to
+`analysis/social_learning_v073/`. v0.7.2 data remain untouched. Multiple nuisance
+realizations are averaged **within ecological seed** before equal-seed means and
+sample SD; they do not increase independent n. Held-out reward prediction is
+action-conditioned and uses the same recorded B/C experience for X, X+social and
+X+nuisance predictors. Fixed-experience Q replay is an offline representation
+comparison, not an ecological counterfactual or evidence of policy improvement.
+
+See [the v0.7.3 scientific report](docs/social_information_controls_v073.md) for
+the frozen models, matching failures, verified runs and interpretive limits.
+Representation effects, predictive information, learned dependence, changed
+behavior and survival benefit are separate claims. No social preference,
+cooperation, semantics or new communication mechanism is introduced here.
+
+The executed pilot **blocked the 500-tick D/E primary**: first-state fractions
+matched within two percentage points, but entropy differed by about 0.94–1.14
+bits, exceeding the predeclared gross-mismatch threshold. Two nuisance
+realizations per ecological seed were examined at 100 ticks only. The reviewed
+pilot tables/figures are in `analysis/social_learning_v073/pilot_reviewed/`;
+held-out 500-tick B/C reward prediction is in `prediction/`, with a separately
+labelled common-support diagnostic in `prediction_support/`. Neither establishes
+a social-information or survival benefit. `python3 -m
+experiments.verify_information_controls` audits historical files, exact
+compatibility and reruns (the receipt destination is exclusive).
 
 ## Social Information in Physical Action Learning — v0.7.2
 

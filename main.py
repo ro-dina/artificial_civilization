@@ -22,7 +22,7 @@ from simulation.vocal_learning_observer import (SCHEMAS as VOCAL_SCHEMAS, CSVVoc
 def main() -> None:
     defaults = Config()
     social_defaults = SocialConfig()
-    parser = argparse.ArgumentParser(description="Artificial Civilization v0.7.2: headless artificial life")
+    parser = argparse.ArgumentParser(description="Artificial Civilization v0.7.3: headless artificial life")
     parser.add_argument("--mode", choices=("legacy", "evolution"), default="legacy")
     parser.add_argument("--brain", choices=("random", "learning"), default=defaults.brain)
     parser.add_argument("--learning-uses-auditory", action=argparse.BooleanOptionalAction,
@@ -64,8 +64,23 @@ def main() -> None:
     parser.add_argument('--social-learning-mode',choices=('none','perception','memory'),default='none',
                         help='coarse social inputs to Physical Q only; memory mode requires --social-memory')
     parser.add_argument('--social-learning-csv',type=Path,help='exclusive v0.7.2 aggregates and diagnostic streams')
+    parser.add_argument('--nuisance-model',type=Path,help='frozen independent nuisance probability/hold model JSON')
+    parser.add_argument('--nuisance-seed',type=int,help='separate nuisance realization seed, independent of --seed')
+    parser.add_argument('--controls-csv',type=Path,help='exclusive v0.7.3 aggregates and ordered physiological outcomes')
     args = parser.parse_args()
     try:
+        nuisance=None
+        if args.nuisance_seed is not None and args.nuisance_model is None:raise ValueError('--nuisance-seed requires --nuisance-model')
+        if args.nuisance_model:
+            from agents.nuisance import NuisanceConfig,NuisanceModel
+            try:model=json.loads(args.nuisance_model.read_text())
+            except (OSError,json.JSONDecodeError) as error:raise ValueError('Invalid nuisance model file: '+str(error)) from error
+            try:nuisance=NuisanceConfig(NuisanceModel(tuple(model['probabilities']),model['hold_probability']),args.nuisance_seed if args.nuisance_seed is not None else 0)
+            except (KeyError,TypeError) as error:raise ValueError('Model requires probabilities and hold_probability') from error
+            if nuisance.model.categories not in (11,37):raise ValueError('CLI controls require 11 or 37 categories')
+            if args.social_learning_mode!='none' or args.brain!='learning':raise ValueError('Nuisance input requires learning brain and social mode none')
+            if args.social_learning_csv or args.social_csv or args.social_history_csv or args.social_policy_csv:raise ValueError('Use --controls-csv for nuisance diagnostics')
+        if args.controls_csv and (args.brain!='learning' or args.social_learning_csv):raise ValueError('Controls recording requires learning brain and its own format')
         social_learning=SocialLearningConfig(args.social_learning_mode)
         if args.social_learning_mode!='none' and args.brain!='learning':raise ValueError('Social learning inputs require --brain learning')
         if args.social_learning_mode=='memory' and not args.social_memory:raise ValueError('Memory input requires --social-memory')
@@ -102,17 +117,21 @@ def main() -> None:
     from simulation.social_learning_observer import SocialLearningWriter,SocialLearningObserver,paths as learning_paths,write_metadata as write_learning_metadata
     new_learning_paths=learning_paths(args.social_learning_csv) if args.social_learning_csv else {}
     learning_metadata_path=Path(str(args.social_learning_csv)+'.metadata.json') if args.social_learning_csv else None
+    from simulation.controls_observer import ControlsWriter,ControlsObserver,paths as control_paths,write_metadata as write_control_metadata
+    new_control_paths=control_paths(args.controls_csv) if args.controls_csv else {}
+    control_metadata_path=Path(str(args.controls_csv)+'.metadata.json') if args.controls_csv else None
     vocal_paths = recording_paths(args.vocal_learning_csv) if args.vocal_learning_csv else {}
     vocal_metadata_path = Path(str(args.vocal_learning_csv) + ".metadata.json") if args.vocal_learning_csv else None
     paths = [path.resolve() for path in (args.csv, args.events, metadata_path, args.cohort_csv,
                                        cohort_metadata_path, args.lineage_events, args.communication_csv,
-                                       communication_metadata_path, vocal_metadata_path, args.social_csv, social_metadata_path, policy_metadata_path, args.social_history_csv, history_metadata_path,learning_metadata_path,*new_learning_paths.values(), *new_policy_paths.values(), *vocal_paths.values()) if path is not None]
+                                       communication_metadata_path, vocal_metadata_path, args.social_csv, social_metadata_path, policy_metadata_path, args.social_history_csv, history_metadata_path,learning_metadata_path,control_metadata_path,*new_control_paths.values(),*new_learning_paths.values(), *new_policy_paths.values(), *vocal_paths.values()) if path is not None]
     if len(set(paths)) != len(paths):
         parser.error("CSV, metadata, and events must use different files (including communication/cohort/lineage outputs)")
-    if (args.social_csv or args.social_policy_csv or args.social_history_csv or args.social_learning_csv) and any(path.exists() for path in paths):
+    if (args.social_csv or args.social_policy_csv or args.social_history_csv or args.social_learning_csv or args.controls_csv) and any(path.exists() for path in paths):
         parser.error('Social recordings refuse existing output/sidecar destinations; choose new paths')
     config_id = hashlib.sha256(json.dumps(asdict(config), sort_keys=True).encode()).hexdigest()
     learning_payload={'social_learning_config':asdict(social_learning),'social_config':asdict(social_config),'social_policy_config':asdict(policy)} if social_learning.mode!='none' else {}
+    if nuisance is not None:learning_payload.update(nuisance_config=asdict(nuisance),social_config=asdict(social_config),social_policy_config=asdict(policy),social_learning_config=asdict(social_learning))
     if learning_payload:
         config_id=hashlib.sha256(json.dumps({'simulation':asdict(config),**learning_payload},sort_keys=True).encode()).hexdigest()
     metadata = {"mode": args.mode, "brain": config.brain, "seed": config.random_seed, "config_id": config_id}
@@ -128,6 +147,9 @@ def main() -> None:
         vocal_observer = None
         learning_writer=SocialLearningWriter.open(stack,args.social_learning_csv) if args.social_learning_csv else None
         learning_observer=SocialLearningObserver(learning_writer) if learning_writer else None
+        control_writer=ControlsWriter.open(stack,args.controls_csv) if args.controls_csv else None
+        control_condition=('D' if nuisance.model.categories==11 else 'E') if nuisance is not None else {'none':'A','perception':'B','memory':'C'}[social_learning.mode]
+        if control_writer is not None:learning_observer=ControlsObserver(control_writer,control_condition)
         policy_writer=PolicyWriter.open(stack,args.social_policy_csv,args.social_policy_trace) if args.social_policy_csv else None
         if args.social_history_csv:
             from experiments.social_history import HistoryCollector,open_stream,write_history_metadata
@@ -169,7 +191,7 @@ def main() -> None:
         sim = Simulation(config, event_sink=event_sink, cohort_sink=cohort_sink, lineage_sink=lineage_sink,
                          communication_sink=communication_sink, vocal_learning_observer=vocal_observer,
                          social_config=social_config, social_sink=social_writer or history_writer,social_policy=policy, social_policy_sink=policy_writer,
-                         social_learning=social_learning,social_learning_observer=learning_observer)
+                         social_learning=social_learning,social_learning_observer=learning_observer,nuisance=nuisance)
         if csv_writer is not None:
             csv_writer.write(sim.statistics)
         fixed_label = (f" fixed_perception_radius={config.fixed_perception_radius}"
@@ -223,6 +245,9 @@ def main() -> None:
         write_social_metadata(args.social_csv, sim, social_writer)
     if args.social_learning_csv:
         write_learning_metadata(args.social_learning_csv,sim,learning_observer,learning_writer)
+    if args.controls_csv:
+        write_control_metadata(args.controls_csv,sim,learning_observer,control_writer,
+            calibration={'model_file':args.nuisance_model.name,'sha256':hash_file(args.nuisance_model)} if args.nuisance_model else None)
 
     # Closed/flushed files only: a sidecar certifies a completed recording.
     if vocal_metadata_path is not None:

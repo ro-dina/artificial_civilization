@@ -36,11 +36,21 @@ class Simulation:
                  brain_factory: Callable[[Random, Config], Brain] | None = None,
                  social_config: SocialConfig | None = None, social_sink=None,
                  social_policy: SocialPolicyConfig | None = None, social_policy_sink=None,
-                 social_learning: SocialLearningConfig | None = None, social_learning_observer=None) -> None:
+                 social_learning: SocialLearningConfig | None = None, social_learning_observer=None,
+                 nuisance=None) -> None:
         self.config = config
         self.social_learning = social_learning if social_learning is not None else SocialLearningConfig()
         if not isinstance(self.social_learning, SocialLearningConfig):
             raise ValueError('social_learning must be a SocialLearningConfig')
+        self.nuisance=nuisance
+        if nuisance is not None:
+            from agents.nuisance import NuisanceConfig,NuisanceSource
+            if not isinstance(nuisance,NuisanceConfig):raise ValueError('nuisance must be a NuisanceConfig')
+            if self.social_learning.mode!='none' or config.brain!='learning' or brain_factory is not None:
+                raise ValueError('Nuisance inputs require the built-in learning brain and social-learning mode none')
+            if social_learning_observer is not None and not getattr(social_learning_observer,'supports_nuisance',False):
+                raise ValueError('Nuisance diagnostics require the versioned controls observer')
+            self._nuisance_source=NuisanceSource(nuisance)
         if self.social_learning.mode != 'none' and (config.brain != 'learning' or brain_factory is not None):
             raise ValueError('Social learning inputs require the built-in learning brain')
         self.social_learning_observer = social_learning_observer
@@ -78,7 +88,10 @@ class Simulation:
         self.communication_observer = CommunicationObserver(config, communication_sink) if communication_sink is not None else None
         self.vocal_learning_observer = vocal_learning_observer
         if brain_factory is None:
-            if self.social_learning.mode != 'none':
+            if nuisance is not None:
+                from agents.nuisance import NuisanceBrain
+                brain_factory=lambda rng,cfg:NuisanceBrain(rng,cfg,self._nuisance_source.new_channel())
+            elif self.social_learning.mode != 'none':
                 from agents.social_learning import SocialLearningBrain
                 brain_factory = lambda rng, cfg: SocialLearningBrain(rng,cfg,self.social_learning.mode)
             else:
@@ -143,6 +156,7 @@ class Simulation:
         social_config: SocialConfig | None = None, social_sink=None,
         social_policy: SocialPolicyConfig | None = None, social_policy_sink=None,
         social_learning: SocialLearningConfig | None = None, social_learning_observer=None,
+        nuisance=None,
     ) -> Simulation:
         settings = config if config is not None else Config()
         if seed is not None:
@@ -152,7 +166,7 @@ class Simulation:
                    vocal_learning_observer=vocal_learning_observer, brain_factory=brain_factory,
                    social_config=social_config, social_sink=social_sink,
                    social_policy=social_policy, social_policy_sink=social_policy_sink,
-                   social_learning=social_learning,social_learning_observer=social_learning_observer)
+                   social_learning=social_learning,social_learning_observer=social_learning_observer,nuisance=nuisance)
 
     def _new_human(self, **state):
         if self.social_config.social_memory_enabled and self.social_policy is not None and not self.social_policy.legacy:
@@ -171,6 +185,9 @@ class Simulation:
         return self._decision_observation(human,self._observe(human))
 
     def _decision_observation(self, human, observation):
+        if self.nuisance is not None:
+            from agents.nuisance import NuisanceObservation
+            return NuisanceObservation(observation.tick,observation.tiles,observation.auditory,human.brain.nuisance_channel.token)
         if self.social_learning.mode == 'none':
             return observation
         from agents.social_learning import extract,learning_observation
@@ -254,9 +271,11 @@ class Simulation:
         newborns = []
 
         for human in order:
+            if self.nuisance is not None:
+                human.brain.nuisance_channel.advance()
             learner = human.brain if isinstance(human.brain, LearningBrain) else None
             previous_updates = learner.learning_updates if learner is not None else 0
-            observation = self.observe(human) if self.social_learning.mode == 'none' else self._observe(human)
+            observation = self.observe(human) if self.social_learning.mode == 'none' and self.nuisance is None else self._observe(human)
             decision_observation = self._decision_observation(human,observation)
             if self.social_learning_observer is not None:
                 self.social_learning_observer.begin(human,observation,self.tick)
