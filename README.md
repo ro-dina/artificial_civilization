@@ -1,4 +1,4 @@
-# Artificial Civilization Simulation — v0.7.3
+# Artificial Civilization Simulation — v0.7.4
 
 A headless, standard-library-only artificial-life simulation for experiments in
 emergent behavior. v0.6 adds learned vocalization selection through a second,
@@ -15,6 +15,71 @@ whether they were heard. There are no communication rewards. Agriculture, econom
 technology, crafting, combat, culture, and civilization are not implemented.
 Renewable food is an environmental process, not farming. Higher-level phenomena
 remain research questions; there are no scripted civilization stages or outcomes.
+
+## Nonstationary social controls and fixed experience — v0.7.4
+
+v0.7.4 completes one bounded methodological study. An optional frozen calendar
+schedule changes nuisance category probabilities and hold probability at ticks
+0/100/200/300/400. Only the clock selects parameters; no live social observation,
+identity, resource, population, reward or Q value enters the generator. Private
+RNG streams remain separate. Original A/B/C, biological rules, rewards, Physical
+and Vocal Q algorithms, capacity256 and default behavior are unchanged. Stationary
+v0.7.3 nuisance models retain their exact trajectories and stream bytes.
+
+Calibration reuses ordered v0.7.3 B/C records from seeds3/4; evaluation uses
+seeds0/1/2 with two nuisance realizations each. The model family, moments fit,
+schedule, matching tolerances, prediction and replay methods were frozen before
+evaluation. The tracked design is `experiments/nonstationary_design.json`;
+the actual pre-evaluation receipt/models are under `data/social_learning_v074/`.
+There is no second model-development cycle after the pilot.
+
+**Result:** marginal entropy and persistence matched much better, but the pilot
+still failed: 44/240 complete-window/full-run checks, including20 gross failures.
+First-state fractions differed by4.17–6.86 percentage points, and conditional
+entropy differed by0.21–0.36 bits. **500-tick D/E primary runs were blocked.**
+The v0.7.3 blocked experiment remains unchanged.
+
+Fixed-experience replay proceeded independently of that gate: nine archived
+source Q/LRU/pending projections matched exactly, followed by54 representation
+comparisons using identical actual actions, rewards and terminal records.
+Pending before-physiology is unavailable and is not fabricated. Final survivor
+transitions remain pending. Replay measures representation/learning-history
+effects; it cannot evaluate another policy's ecological outcomes.
+
+The prespecified held-out predictor uses hierarchical backoff to the same X,A
+parent (or X,B,A for additional memory), min20 training observations and smoothing
+strength5. It reports immediate reward, next-five-actual-reward and five-tick
+survival outcomes with explicit death/end/gap censoring. Small immediate-reward
+prediction gains from social perception occur; extra memory has no consistent
+gain. Predictive improvement does not establish useful action selection or a
+survival benefit. Sparse common support, unmatched state visitation and only
+three ecological seeds leave the main online information-value question unresolved.
+
+```bash
+python3 -m unittest discover -s tests -q
+# Archive prerequisite: completed v0.7.2/v0.7.3 ordered records already present.
+# Exclusive destinations: use fresh --root / --output-root for reproduction.
+python3 -m experiments.nonstationary_controls --phase diagnose
+python3 -m experiments.nonstationary_controls --phase preregister
+python3 -m experiments.nonstationary_controls --phase calibrate
+python3 -m experiments.nonstationary_replay
+python3 -m experiments.nonstationary_prediction
+python3 -m experiments.nonstationary_controls --phase pilot
+# Only an entirely passing frozen gate permits this command:
+python3 -m experiments.nonstationary_controls --phase primary
+python3 -m experiments.nonstationary_plots
+python3 -m experiments.nonstationary_audit
+```
+
+The executed study passed **602 tests**. CSVs/figures/manifests are in
+`analysis/social_learning_v074/`, raw pilot records/configs in
+`data/social_learning_v074/`. Multiple nuisance realizations are averaged inside
+ecological seed before equal-seed mean/sample SD; unsupported comparisons remain
+NA. See [the complete v0.7.4 report](docs/nonstationary_social_controls_v074.md)
+for per-seed results, parameter values, field limitations and reproduction details.
+This closes the methodological cycle. v0.8 ecological relevance is a future
+research design, not implemented here; advancing does not require a positive
+social-information result under the current ecology.
 
 ## Social information value controls — v0.7.3
 

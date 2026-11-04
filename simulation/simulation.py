@@ -186,8 +186,10 @@ class Simulation:
 
     def _decision_observation(self, human, observation):
         if self.nuisance is not None:
-            from agents.nuisance import NuisanceObservation
-            return NuisanceObservation(observation.tick,observation.tiles,observation.auditory,human.brain.nuisance_channel.token)
+            from agents.nuisance import NuisanceObservation,NonstationaryNuisanceChannel
+            channel=human.brain.nuisance_channel
+            token=channel.preview(self.tick) if isinstance(channel,NonstationaryNuisanceChannel) else channel.token
+            return NuisanceObservation(observation.tick,observation.tiles,observation.auditory,token)
         if self.social_learning.mode == 'none':
             return observation
         from agents.social_learning import extract,learning_observation
@@ -272,7 +274,10 @@ class Simulation:
 
         for human in order:
             if self.nuisance is not None:
-                human.brain.nuisance_channel.advance()
+                from agents.nuisance import NonstationaryNuisanceChannel
+                channel=human.brain.nuisance_channel
+                if isinstance(channel,NonstationaryNuisanceChannel):channel.advance(self.tick)
+                else:channel.advance()
             learner = human.brain if isinstance(human.brain, LearningBrain) else None
             previous_updates = learner.learning_updates if learner is not None else 0
             observation = self.observe(human) if self.social_learning.mode == 'none' and self.nuisance is None else self._observe(human)

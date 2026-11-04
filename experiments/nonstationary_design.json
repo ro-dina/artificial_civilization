@@ -1,0 +1,124 @@
+{
+  "version": "0.7.4",
+  "baseline_commit": "3835353cf3d8ccdb3e8afb451fe23bda61de2785",
+  "one_model_cycle_only": true,
+  "inspected_flow": "One sequential raw observation; freeze social suffix before LTM update; auditory update, original X, physical suffix; read bootstrap before previous-row recreation/update; current LRU allocation and epsilon choice; Vocal Q uses original X; action/reproduction/emission/physiology/reward; terminal update immediately else pending until next real observation; newborns next tick. Physical/vocal capacity256, zero priors, all algorithms unchanged.",
+  "archive_reuse": "v073 ordered outcomes, original-key catalogs, actual retained histograms and physical-Q/pending digests; v072 ecological and exposure/movement strata. No new B/C500 recordings required. Age=own opportunity index exactly under complete-from-birth records; visibility/here recoverable from original X, quantities/acquisition unavailable.",
+  "calibration_seeds": [
+    3,
+    4
+  ],
+  "evaluation_seeds": [
+    0,
+    1,
+    2
+  ],
+  "family": "Single frozen piecewise time-inhomogeneous hold/resample Markov process. Calendar tick only selects epoch. Stationary private uniform at construction mapped through current epoch CDF on first actual turn; subsequent turns hold with alpha(t), else resample pi(t). No X/social/ID/resources/reward/outcome feedback. Epoch starts0,100,200,300,400; last continues. No reset on epoch boundary.",
+  "fit": "Per epoch, equal-seed token frequencies pi and empirical same-token rates from calibration3/4. alpha=(same-sum(pi^2))/(1-sum(pi^2)), saturated at[0,1] only if necessary and explicitly flagged. No search/reward/performance tuning. Analytical moments approximate transient nonstationary mixture; measured full fixed-X calibration null audits limitations.",
+  "windows": "[0,100),[100,200),[200,300),[300,400),[400,500); no tick0 decisions, tick500 only in full diagnostics. Pilot gate uses complete [0,100) plus full100, reports tick100 partial separately but does not gate on incomplete window.",
+  "matching": {
+    "token_entropy": {
+      "target": 0.25,
+      "gross": 0.75
+    },
+    "conditional_entropy": {
+      "target": 0.25,
+      "gross": 0.5
+    },
+    "marginal_tv": {
+      "target": 0.1,
+      "gross": 0.25
+    },
+    "conditional_tv_common_X": {
+      "target": 0.25,
+      "gross": 0.5
+    },
+    "same_token": {
+      "target": 0.05,
+      "gross": 0.15
+    },
+    "run_cdf_distance": {
+      "target": 0.15,
+      "gross": 0.3
+    },
+    "first_state_fraction": {
+      "target": 0.02,
+      "gross": 0.05
+    },
+    "relative_mean_visits": {
+      "target": 0.1,
+      "gross": 0.25
+    },
+    "fraction_states_once": {
+      "target": 0.05,
+      "gross": 0.1
+    },
+    "relative_effective_tokens": {
+      "target": 0.2,
+      "gross": 0.5
+    }
+  },
+  "matching_support": "Conditional-TV original-X common cells>=20 decisions in EACH run; coverage>=10% of decisions in EACH. Unsupported essential checks are NA and block primary. Plug-in distribution/entropy diagnostics, not significance tests. Per-seed/per-realization/per-complete-window AND full-run targets must ALL pass; no moderate-failure override.",
+  "matching_rationale": "Preserve v073 H=.25/F=.02/visits10%/same=.05. Add explicit conditional gross=.50 (2x target), marginal TV .10, conditional TV .25, empirical window-clipped run-CDF KS .15, states-once .05 and effective count20%. Conservative finite-sample diagnostics, every denominator retained; failure is valid.",
+  "run_cdf_bins": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    8,
+    16,
+    32,
+    "infinity"
+  ],
+  "censoring": "Own-opportunity segments, left-boundary and death/end right censoring explicit. CDF of clipped segments is descriptive, not an uncensored lifespan estimate.",
+  "calibration_nuisance_seeds": [
+    31,
+    47
+  ],
+  "online_nuisance_seed": "20000+100*eco_seed+realization, realization0/1; model K isolates D/E streams",
+  "replay": "High priority, independent of online gate. Validate A/B/C0/1/2 full500 source digests before alternatives. Fixed B/C experience A,B,C,D,E and B+independent remembered-direction projection of E; projection is diagnostic-only66 possible slots, holds actual B fixed. Two nuisance realizations; seed50000+100*eco+r. Retain actual actions, reward, terminal, read-before-update,LRU256, pending cutoff; no ecological evaluation.",
+  "prediction": {
+    "train": [
+      3,
+      4
+    ],
+    "test": [
+      0,
+      1,
+      2
+    ],
+    "nuisance_seed": "60000+100*eco+r, r0/1",
+    "method": "Prespecified hierarchical categorical frequency predictor; min20 per cell, Dirichlet strength5. X,A backs off to action prior. Extended token backs off/smooths to X,A. C remembered feature backs off to X,B,A. Same test decisions for all models; all + common supported subset. No model sweep.",
+    "immediate_reward_bins": [
+      -0.1,
+      0.0
+    ],
+    "future_cumulative_reward": "Sum of next5 ACTUAL own-decision rewards (exclude current); same fixed bins. If fewer5 available, censored by observed death vs run end. No invented absorbing rewards.",
+    "survival": "Alive after tick t+5; known observed death before/at horizon gives0; actual t+5 row alive gives1; alive but insufficient future observation is end-censored. No resource-acquisition target: field unavailable.",
+    "memory_specific": "On C experience compare X,B,A vs X,B,RD,A, and X,B,U_RD,A; hold actual B fixed. U_RD is canonical remembered-direction projection of independent37-category process. No individual IDs.",
+    "metrics": [
+      "log_loss",
+      "brier",
+      "equal_agent_log_loss",
+      "coverage",
+      "common_support_coverage",
+      "ECE_10_maxconfidence_bins",
+      "calibration_bins",
+      "agents",
+      "decisions",
+      "censoring"
+    ],
+    "limits": "Observational, action-conditioned, independent eco n3; no policy/survival benefit claim from prediction or replay."
+  },
+  "gate": "Primary500 only if every frozen pilot check passes, none unsupported. Any gross mismatch blocks. Preserve failed pilot; no redesign after evaluation. Stop methodological phase after report; v0.8 ecology design is documentation only.",
+  "phaseI_inputs": {
+    "analysis/social_learning_v074/nonstationarity/diagnostic_strata.csv": "a94d618d79ea7b2706aebf2b6d8b7c2ec475d322f392ec73ec62053c81c423c3",
+    "analysis/social_learning_v074/nonstationarity/frequencies.csv": "2789a6a1064c778b459793428947a7dadcc199ca6932182386b0dff39d5e57cf",
+    "analysis/social_learning_v074/nonstationarity/metadata.json": "ee4aed332e444b2a2d52a6f2f6e106beeb626173045d40262c971707206d6314",
+    "analysis/social_learning_v074/nonstationarity/run_segments.csv": "0af04d193e9588f75c8859a64f22019943dd96c9c6a87796a30a3430139b4a8a",
+    "analysis/social_learning_v074/nonstationarity/state_visits.csv": "7661abc63dd8a09e744992337c8edfa7c258d72f11f992dbe7ebe0d4df74ce70",
+    "analysis/social_learning_v074/nonstationarity/summary.csv": "24dfd577cdda5d4ad6d19f5280b6bfe5c5ed65076035c19f6a9fc181d693e678",
+    "analysis/social_learning_v074/nonstationarity/windows.csv": "18600017df4de32e89dcf82ccb6616a25aae8043379de2a29dcf4438f4be2613"
+  }
+}

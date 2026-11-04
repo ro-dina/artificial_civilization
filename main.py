@@ -22,7 +22,7 @@ from simulation.vocal_learning_observer import (SCHEMAS as VOCAL_SCHEMAS, CSVVoc
 def main() -> None:
     defaults = Config()
     social_defaults = SocialConfig()
-    parser = argparse.ArgumentParser(description="Artificial Civilization v0.7.3: headless artificial life")
+    parser = argparse.ArgumentParser(description="Artificial Civilization v0.7.4: headless artificial life")
     parser.add_argument("--mode", choices=("legacy", "evolution"), default="legacy")
     parser.add_argument("--brain", choices=("random", "learning"), default=defaults.brain)
     parser.add_argument("--learning-uses-auditory", action=argparse.BooleanOptionalAction,
@@ -64,18 +64,18 @@ def main() -> None:
     parser.add_argument('--social-learning-mode',choices=('none','perception','memory'),default='none',
                         help='coarse social inputs to Physical Q only; memory mode requires --social-memory')
     parser.add_argument('--social-learning-csv',type=Path,help='exclusive v0.7.2 aggregates and diagnostic streams')
-    parser.add_argument('--nuisance-model',type=Path,help='frozen independent nuisance probability/hold model JSON')
+    parser.add_argument('--nuisance-model',type=Path,help='frozen independent stationary or scheduled nuisance model JSON')
     parser.add_argument('--nuisance-seed',type=int,help='separate nuisance realization seed, independent of --seed')
-    parser.add_argument('--controls-csv',type=Path,help='exclusive v0.7.3 aggregates and ordered physiological outcomes')
+    parser.add_argument('--controls-csv',type=Path,help='exclusive versioned controls aggregates and ordered physiological outcomes')
     args = parser.parse_args()
     try:
         nuisance=None
         if args.nuisance_seed is not None and args.nuisance_model is None:raise ValueError('--nuisance-seed requires --nuisance-model')
         if args.nuisance_model:
-            from agents.nuisance import NuisanceConfig,NuisanceModel
+            from agents.nuisance import NuisanceConfig,nuisance_model_from_dict
             try:model=json.loads(args.nuisance_model.read_text())
             except (OSError,json.JSONDecodeError) as error:raise ValueError('Invalid nuisance model file: '+str(error)) from error
-            try:nuisance=NuisanceConfig(NuisanceModel(tuple(model['probabilities']),model['hold_probability']),args.nuisance_seed if args.nuisance_seed is not None else 0)
+            try:nuisance=NuisanceConfig(nuisance_model_from_dict(model),args.nuisance_seed if args.nuisance_seed is not None else 0)
             except (KeyError,TypeError) as error:raise ValueError('Model requires probabilities and hold_probability') from error
             if nuisance.model.categories not in (11,37):raise ValueError('CLI controls require 11 or 37 categories')
             if args.social_learning_mode!='none' or args.brain!='learning':raise ValueError('Nuisance input requires learning brain and social mode none')

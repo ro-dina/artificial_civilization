@@ -5,7 +5,7 @@ from pathlib import Path
 from time import perf_counter
 
 from config import Config,SocialConfig,SocialPolicyConfig,SocialLearningConfig
-from agents.nuisance import NuisanceConfig,NuisanceModel
+from agents.nuisance import NuisanceConfig,NuisanceModel,nuisance_model_from_dict
 from simulation.simulation import Simulation
 from simulation.controls_observer import ControlsObserver,ControlsWriter,write_metadata
 from experiments.social_learning_experiments import fingerprints
@@ -18,7 +18,7 @@ ROOT=Path('data/social_learning_v073')
 
 def model_file(path):
     m=json.loads(Path(path).read_text())
-    try:return NuisanceModel(tuple(m['probabilities']),m['hold_probability'])
+    try:return nuisance_model_from_dict(m)
     except (KeyError,TypeError) as error:raise ValueError('Model requires probabilities and hold_probability') from error
 
 

@@ -157,15 +157,18 @@ def physical_fingerprint(sim):
     return hashlib.sha256(json.dumps(rows,separators=(',',':')).encode()).hexdigest()
 
 
-def write_metadata(path,sim,observer,writer,*,realization=0,calibration=None,fingerprints=None):
+def write_metadata(path,sim,observer,writer,*,realization=0,calibration=None,fingerprints=None,version='0.7.3'):
     if not observer.finished:raise ValueError('Complete recording before metadata')
+    from agents.nuisance import NonstationaryNuisanceModel
+    scheduled=sim.nuisance is not None and isinstance(sim.nuisance.model,NonstationaryNuisanceModel)
+    if scheduled:version='0.7.4'
     from simulation.social_observer import config_hash
     payload={'simulation':asdict(sim.config),'social':asdict(sim.social_config),'policy':asdict(sim.social_policy) if sim.social_policy else None,
              'social_learning':asdict(sim.social_learning),'nuisance':asdict(sim.nuisance) if sim.nuisance is not None else None}
     sources=['config.py','main.py']
     for d in ('agents','simulation','systems','world'):sources.extend(str(p) for p in sorted(Path(d).glob('*.py')))
     files=paths(path,observer.light)
-    meta={'version':'0.7.3','format':'social_information_controls','completed':True,'schema_version':1,'config':payload,'config_id':config_hash(payload),
+    meta={'version':version,'format':'social_information_controls','completed':True,'schema_version':1,'config':payload,'config_id':config_hash(payload),
           'condition':observer.condition,'seed':sim.config.random_seed,'nuisance_seed':None if sim.nuisance is None else sim.nuisance.seed,'realization':realization,
           'light':observer.light,'tick':sim.tick,'statistics':asdict(sim.statistics),'totals':dict(sorted(observer.total.items())),
           'action_sha256':observer.action_digest.hexdigest(),'physical_q_sha256':physical_fingerprint(sim),'living_ids':[h.id for h in sim.agents],
@@ -179,5 +182,7 @@ def write_metadata(path,sim,observer,writer,*,realization=0,calibration=None,fin
             'policy_probe':'Same v072 retained-row >=2/5 visits and >=1 current-row update, original state held fixed. D/E vary nuisance only. Observed rows only.',
             'retained':'Histogram of actual current-residence Q visits and TD updates in living tables, not lifetime visits. Lifetime update histograms separate.',
             'interpretation':'Exogenous innovations do not guarantee zero empirical correlation after policy/selection feedback. Predictive analysis uses fixed B/C experience and independent attached nuisance; no ecological counterfactual claims.'}}
+    if scheduled:
+        meta['definitions']['nuisance']='Frozen calendar schedule chooses pi(t),alpha(t), not a tick hash. Independent private streams and stationary initial uniform mapped at first actual turn. No reset at boundaries, no live social/X/resource/reward/ID feedback. First-turn read-only preview maps that same uniform without draws.'
     with Path(str(path)+'.metadata.json').open('x') as f:f.write(json.dumps(meta,indent=2,allow_nan=False)+'\n')
     return meta

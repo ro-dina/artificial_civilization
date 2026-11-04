@@ -72,43 +72,78 @@ def prediction(root,common_support=False):
     return rows
 
 
-def replay(path,representation,model=None,nseed=0):
+def replay(path,representation,model=None,nseed=0,*,diagnostics=False):
     """Same recorded actions/rewards; no environment execution or policy value claim.
 
     Bootstrap is read BEFORE previous-row recreation. At cutoff the pending TD
     transition remains unupdated. No next observation is invented.
     """
+    if representation not in ('A','B','C','D','E','B_Umemory'):raise ValueError('Unknown replay representation')
     m,files,f=original_frame(path)
     catalog={r.base_id:deep_tuple(json.loads(r.key_json)) for r in read_csv(files['states']).itertuples(index=False)}
     cfg=m['config']['simulation'];capacity=cfg['learning_memory_capacity'];lr=cfg['learning_rate'];discount=cfg['learning_discount'];actions=8 if cfg['reproduction_enabled'] else 7
-    if representation in 'DE' and model is None:raise ValueError('Nuisance replay needs frozen model')
-    tokens=(f.used_token.tolist() if representation==m['condition'] else attach_nuisance(f,model,nseed)) if representation in 'DE' else None
+    if representation in ('D','E','B_Umemory') and model is None:raise ValueError('Nuisance replay needs frozen model')
+    tokens=(f.used_token.tolist() if representation==m['condition'] else attach_nuisance(f,model,nseed)) if representation in ('D','E','B_Umemory') else None
     tables={};pending={};histories={};visit_hist=Counter();updates=evictions=allocations=distinct=0
-    def remember(q,key):
+    row_meta={};lifetime_updates={};update_hist=Counter()
+    def remember(q,key,identity):
         nonlocal evictions,allocations
         if key not in q:
-            if len(q)==capacity:q.popitem(last=False);evictions+=1
+            if len(q)==capacity:
+                evicted,_=q.popitem(last=False);evictions+=1
+                if diagnostics:row_meta[identity].pop(evicted,None)
             q[key]=[0.]*actions;allocations+=1
+            if diagnostics:row_meta[identity][key]=[0,0]
         q.move_to_end(key);return q[key]
-    def update(q,p,next_value):
+    def update(q,p,next_value,identity):
         nonlocal updates
-        key,a,r=p;values=remember(q,key);values[a]+=lr*(r+discount*next_value-values[a]);updates+=1
+        key,a,r=p;values=remember(q,key,identity);values[a]+=lr*(r+discount*next_value-values[a]);updates+=1
+        if diagnostics:row_meta[identity][key][1]+=1;lifetime_updates[identity][key]+=1
     for i,r in enumerate(f.itertuples(index=False)):
         x=catalog[r.base_id]
-        key=x if representation=='A' else (*x,r.b_token) if representation=='B' else (*x,*C_PAIRS[r.c_token]) if representation=='C' else (*x,tokens[i])
+        key=x if representation=='A' else (*x,r.b_token) if representation=='B' else (*x,*C_PAIRS[r.c_token]) if representation=='C' else (*x,r.b_token,C_PAIRS[tokens[i]][1]) if representation=='B_Umemory' else (*x,tokens[i])
         q=tables.setdefault(r.agent_id,OrderedDict());visits=histories.setdefault(r.agent_id,Counter())
+        if diagnostics:row_meta.setdefault(r.agent_id,{});lifetime_updates.setdefault(r.agent_id,Counter())
         if key not in visits:distinct+=1
         visits[key]+=1
-        if r.agent_id in pending:update(q,pending.pop(r.agent_id),max(q.get(key,(0.,)*actions)))
-        remember(q,key);p=(key,r.action,r.reward)
+        if r.agent_id in pending:update(q,pending.pop(r.agent_id),max(q.get(key,(0.,)*actions)),r.agent_id)
+        remember(q,key,r.agent_id);p=(key,r.action,r.reward)
+        if diagnostics:row_meta[r.agent_id][key][0]+=1
         if r.terminal:
-            update(q,p,0.);tables.pop(r.agent_id);visit_hist.update(visits.values());histories.pop(r.agent_id)
+            update(q,p,0.,r.agent_id);tables.pop(r.agent_id);visit_hist.update(visits.values());histories.pop(r.agent_id)
+            if diagnostics:
+                update_hist.update(lifetime_updates[r.agent_id][k] for k in visits)
+                lifetime_updates.pop(r.agent_id);row_meta.pop(r.agent_id)
         else:pending[r.agent_id]=p
     for visits in histories.values():visit_hist.update(visits.values())
     rows=[(identity,tuple((k,tuple(v)) for k,v in tables.get(identity,{}).items()),pending.get(identity)) for identity in m['living_ids']]
     sha=hashlib.sha256(json.dumps(rows,separators=(',',':')).encode()).hexdigest()
     if representation==m['condition'] and sha!=m['physical_q_sha256']:raise RuntimeError('Fixed-experience replay differs from actual Q/LRU/pending state')
-    return {'source_condition':m['condition'],'seed':m['seed'],'representation':representation,'decisions':len(f),'distinct_agent_states':distinct,
+    result={'source_condition':m['condition'],'seed':m['seed'],'representation':representation,'decisions':len(f),'distinct_agent_states':distinct,
             'first_state_fraction':distinct/len(f),'mean_visits':len(f)/distinct,'states_once_fraction':visit_hist[1]/distinct,
             'updates':updates,'evictions':evictions,'allocations':allocations,'pending_cutoff':len(pending),'physical_q_sha256':sha,
-            'exact_source_reconstruction':representation==m['condition'],'nuisance_seed':nseed if representation in 'DE' else None}
+            'exact_source_reconstruction':representation==m['condition'],'nuisance_seed':nseed if representation in ('D','E','B_Umemory') else None}
+    if diagnostics:
+        from types import SimpleNamespace
+        from simulation.social_learning_observer import probe,policy
+        agents=[];retained=Counter();ranges=[];preferences=[0.]*actions
+        for identity in m['living_ids']:
+            q=tables.get(identity,{});history=histories.get(identity,{})
+            update_hist.update(lifetime_updates.get(identity,{}).get(k,0) for k in history)
+            h={k:[v,*row_meta[identity].get(k,(0,0))] for k,v in history.items()}
+            brain=SimpleNamespace(_values=q,epsilon=cfg['learning_epsilon'])
+            agents.append((SimpleNamespace(id=identity,brain=brain),h))
+            for key,values in q.items():
+                visits,td=row_meta[identity][key];retained[visits,td]+=1;ranges.append(max(values)-min(values))
+                for j,p in enumerate(policy(values,cfg['learning_epsilon'])):preferences[j]+=p
+        n=sum(retained.values());mode='none' if representation=='A' else 'memory' if representation in ('C','B_Umemory') else 'perception'
+        supported=[probe(agents,mode,m['tick'],minimum,kind) for minimum in (2,5) for kind in ('all_social','memory_only')]
+        living_keys=sum(len(h) for h in histories.values())
+        result.update(retained_rows=n,living_observed_agent_states=living_keys,retention_fraction=n/living_keys if living_keys else None,
+            mean_retained_q_range=sum(ranges)/n if n else None,nonflat_retained_fraction=sum(v>0 for v in ranges)/n if n else None,
+            mean_rows_per_living_agent=n/len(m['living_ids']) if m['living_ids'] else None,
+            **{f'retained_policy_action_{j}':v/n if n else None for j,v in enumerate(preferences)},
+            diagnostics={'probes':supported,'state_visits':[{'visits':k,'states':v} for k,v in sorted(visit_hist.items())],
+                'state_updates':[{'updates':k,'states':v} for k,v in sorted(update_hist.items())],
+                'retained':[{'visits':k[0],'updates':k[1],'rows':v} for k,v in sorted(retained.items())]})
+    return result

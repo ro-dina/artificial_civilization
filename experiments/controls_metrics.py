@@ -14,7 +14,7 @@ def read_csv(path):
 
 def load(path,verify=True):
     path=Path(path);m=json.loads(path.read_text())
-    if not m.get('completed') or m.get('version') not in ('0.7.2','0.7.3'):raise ValueError('Expected completed v072/v073 metadata')
+    if not m.get('completed') or m.get('version') not in ('0.7.2','0.7.3','0.7.4'):raise ValueError('Expected completed v072/v073/v074 metadata')
     if m.get('format') not in ('social_learning_aggregates','social_information_controls'):raise ValueError('Unexpected diagnostic format')
     if verify:
         for kind,record in m['files'].items():
@@ -50,9 +50,13 @@ def token_metrics(base,tokens,weights=None):
 def attach_nuisance(frame,model,seed):
     """Ownership lookup only; IDs never seed/enter a channel. Actual order preserved."""
     source=NuisanceSource(NuisanceConfig(model,seed));channels={};tokens=[]
-    for identity,terminal in frame[['agent_id','terminal']].itertuples(index=False,name=None):
+    from agents.nuisance import NonstationaryNuisanceModel
+    scheduled=isinstance(model,NonstationaryNuisanceModel)
+    columns=['agent_id','terminal','tick'] if scheduled else ['agent_id','terminal']
+    for row in frame[columns].itertuples(index=False,name=None):
+        identity,terminal=row[:2]
         if identity not in channels:channels[identity]=source.new_channel()
-        tokens.append(channels[identity].advance())
+        tokens.append(channels[identity].advance(int(row[2])) if scheduled else channels[identity].advance())
         if terminal:channels.pop(identity)
     return tokens
 
