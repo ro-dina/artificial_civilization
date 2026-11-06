@@ -1,0 +1,184 @@
+{
+  "version": "0.8.2",
+  "objective": "Final fixed measurement study of existing ecology; no positive-result requirement and no follow-up methodology sweep",
+  "ecologies": {
+    "E0": [
+      1.0,
+      0.0
+    ],
+    "E1": [
+      0.5,
+      0.0
+    ],
+    "E2": [
+      1.0,
+      0.75
+    ],
+    "E3": [
+      0.5,
+      0.75
+    ]
+  },
+  "geometry": {
+    "patch_count": 4,
+    "patch_radius": 4,
+    "algorithm": "Unchanged v080 geometry/placement streams"
+  },
+  "modes": [
+    "A",
+    "B",
+    "C"
+  ],
+  "horizon": 500,
+  "pilot": {
+    "seeds": [
+      10
+    ],
+    "ticks": 100,
+    "cases": 12,
+    "minimum_population": 10,
+    "minimum_decisions": 5000,
+    "minimum_each_resource_consumed": 20,
+    "feasibility": "Primary T1 exact coverage>=.5, prevalence .1.. .9,>=100 positives and negatives,>=100 agents per case; secondary reported even if sparse. Conditional support measured leave-mode-matched origins within pilot only as diagnostic, not gain selection."
+  },
+  "instrumentation": {
+    "validation": [
+      [
+        "E0",
+        "A",
+        0,
+        30
+      ],
+      [
+        "E0",
+        "C",
+        0,
+        30
+      ],
+      [
+        "E3",
+        "B",
+        0,
+        30
+      ],
+      [
+        "E3",
+        "C",
+        0,
+        30
+      ]
+    ],
+    "archived_e0": [
+      "A",
+      "B",
+      "C"
+    ],
+    "archived_seed": 0,
+    "archived_ticks": 100,
+    "require": "Complete bodies/world/Q/LRU/pending/named RNG/statistics and actual actions identical with dense on/off; repeat byte-identical binary files. No extra simulation RNG."
+  },
+  "train_seeds": [
+    10,
+    11,
+    12
+  ],
+  "evaluation_seeds": [
+    20,
+    21,
+    22
+  ],
+  "same_mode_training": true,
+  "targets": {
+    "T1": "Primary: water quantity>0 at origin pre-action (x,y), exact END tick t+5; fixed coordinate, death does not censor environment",
+    "T2": "Secondary: origin pre-action water>0, water at same fixed tile at END tick t+5==0; depletion only",
+    "B10": "Descriptive reference only: either resource acquired in next10 actual own decisions; v081 consumption-before-death tie semantics, observed positive/full alive negative/competing death/admin/gap separate"
+  },
+  "dense_format": "Schema1 uint8 food/water row-major each tick0..H, uint64 little-endian tick, gzip6. Reject unbounded/capacity>255. After all actions/births/auditory advance AND statistics finalization. Check both mass balances every frame. No tick-start file.",
+  "thresholds": {
+    "prevalence_min": 0.1,
+    "prevalence_max": 0.9,
+    "minimum_each_class": 100,
+    "minimum_agents": 100,
+    "minimum_training_cell": 20,
+    "minimum_common_coverage": 0.2,
+    "minimum_label_coverage": 0.5,
+    "minimum_mixed_baseline_strata": 2,
+    "minimum_class_in_mixed_stratum": 20,
+    "minimum_supported_social_tokens": 2,
+    "minimum_supported_memory_tokens": 2
+  },
+  "regularized_support": {
+    "minimum_level_training_count": 20,
+    "minimum_supported_row_fraction": 0.95,
+    "require_target_marginal_and_conditional_variation_gates": true,
+    "minimum_supported_B_levels": 2,
+    "minimum_supported_RD_levels": 2,
+    "interpretation": "Feature-level qualified model-dependent generalization, separately from strict exact-cell qualification. Not an exact-cell estimate when common-cell gate fails."
+  },
+  "models": {
+    "H": {
+      "family": "Unchanged v074/v081 Hierarchy",
+      "minimum_cell": 20,
+      "dirichlet_strength": 5,
+      "heads": [
+        "X,A",
+        "X,A,B",
+        "X,A,B,RD"
+      ],
+      "memory_parent": "H1",
+      "training": "Integer sufficient counts of actual same-mode labels across three training seeds"
+    },
+    "R": {
+      "family": "L2 logistic regression, additive categorical main effects",
+      "encoding": "Full fixed one-hot per original X component:3 need bins each; four resource direction components in -1,0,1,2; auditory kind SILENCE/MASKED/IDENTIFIED, signal NA/0..15, source NA/nine sectors, age NA/0..3; action0..7; append B0..10 then RD0..5. Intercept. No IDs/position/time/patch/quantity/future features, no interactions.",
+      "dimensions": [
+        69,
+        80,
+        86
+      ],
+      "l2": 0.001,
+      "objective": "Mean decision negative log likelihood + .5*l2*sum(non-intercept coefficient squared)",
+      "class_weighting": "none",
+      "optimizer": "Deterministic damped Newton, exact analytic gradient/Hessian of weighted unique patterns",
+      "gradient_infinity_tolerance": 1e-08,
+      "max_iterations": 100,
+      "line_search_halvings": 30,
+      "initialization": "zero slopes, intercept logit training prevalence",
+      "randomness": "none",
+      "hyperparameter_search": false
+    }
+  },
+  "training_review": "Before evaluation, leave-one-training-seed-out support using two SAME-MODE seeds. For a target/ecology/mode/family/increment, require all3 held-out training seeds pass its declared gates. Full model fit must converge for R. Stop corresponding qualified analysis if not. Evaluation all36 cases allowed only if pilot passes and at least one fixed environmental stratum qualifies for H or R; do not choose ecologies by predictive gains.",
+  "scoring": {
+    "populations": [
+      "all exact labels",
+      "H0/H1 common cells",
+      "H0/H1/H2 common cells",
+      "R0/R1 supported feature levels",
+      "R0/R1/R2 supported feature levels",
+      "R0/R1 supported levels outside H0/H1 common cells",
+      "R0/R1/R2 supported levels outside H0/H1/H2 common cells"
+    ],
+    "same_decisions": true,
+    "contrasts": [
+      "H1-H0",
+      "H2-H1",
+      "R1-R0",
+      "R2-R1"
+    ],
+    "metrics": [
+      "log_loss",
+      "binary_brier",
+      "positive_probability_calibration",
+      "equal_agent_log_loss",
+      "equal_agent_brier",
+      "prevalence",
+      "support",
+      "convergence"
+    ],
+    "independent_unit": "ecological seed; raw seed scores first, equal-seed mean/sampleSD,min,max,n. No decision-level significance test.",
+    "qualifications": "Training gate and held-out target/support gates both required for qualified effect. Raw backoff scores retained as unsupported diagnostics, qualified effect NA if failed. R effects outside strict exact support labelled model-dependent generalization.",
+    "minimum_each_class_in_scored_subset": 100
+  },
+  "stopping": "Maximum36 train+36 evaluation500-tick runs. No additional seeds,1000 ticks, target changes, threshold relaxation, regularization tuning, nuisance models or ecological mechanisms. Finish report even negative; next release separate ecological intervention, tentatively v083."
+}

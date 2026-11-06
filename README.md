@@ -1,4 +1,4 @@
-# Artificial Civilization Simulation — v0.8.1
+# Artificial Civilization Simulation — v0.8.2
 
 A headless, standard-library-only artificial-life simulation for experiments in
 emergent behavior. v0.6 adds learned vocalization selection through a second,
@@ -15,6 +15,78 @@ whether they were heard. There are no communication rewards. Agriculture, econom
 technology, crafting, combat, culture, and civilization are not implemented.
 Renewable food is an environmental process, not farming. Higher-level phenomena
 remain research questions; there are no scripted civilization stages or outcomes.
+
+## Dense future-resource measurement — v0.8.2
+
+v0.8.2 adds an optional **passive resource observer** and one final, frozen
+prediction study for the existing ecology. Tick0 and every actual end tick are
+stored as exact compressed uint8 food/water grids, after statistics finalization.
+Every frame checks separate food and water mass balance. Larger/unbounded future
+capacities require a different format and are rejected rather than truncated.
+The observer uses the existing callback; Simulation, Config, agents, sensory
+encoders, resource rules, rewards, reproduction, mutation, Physical/Vocal Q and
+capacity256 are unchanged. Default runs do not enable dense observation.
+
+The frozen targets are water at the **fixed origin tile** at end t+5, and water
+depletion there conditional on origin water being present. Later movement never
+selects the reference location; environmental labels remain valid after the
+originating agent dies. Next-ten-decision actual acquisition is a descriptive
+reference with explicit competing-death/end/gap handling.
+
+Training seeds10/11/12 and evaluation seeds20/21/22 use the same A/B/C mode and
+unchanged E0–E3 ecology. The study compares the existing hierarchical count
+model with one fixed L2 logistic regression (numpy only, deterministic damped
+Newton, additive categorical features, no hyperparameter search). Exact-cell
+qualification and feature-level generalization are reported separately. New
+predictors are offline analyses; no predictor weights enter an agent.
+
+The tracked design is `experiments/dense_resource_design.json`; the actual
+pre-run plan/source-hash receipt is `data/dense_resource_v082/preregistration.json`.
+See [the scientific report](docs/dense_resource_prediction_v082.md) for executed
+gates, seed results, model qualifications, limits and verification. This closes
+the current resource-prediction measurement cycle; v0.8.3 is a separate future
+ecological intervention, not an automatic parameter/methodology search.
+
+**Completed study:** all72 planned500-tick runs finished (36 training,36 new-seed
+evaluation), following12 accepted100-tick pilots and15 short validation controls.
+For primary future water, social perception improves both predictor families in
+E2 (localized, normal supply) in A/B/C and all three evaluation seeds. R improves
+decision-weighted log loss/Brier in all36 primary cases; H worsens log loss in
+E0/E1, and E3/H remains NA from failed training support. R generalization is
+model-dependent and is not uniformly better outside exact common cells.
+Additional memory has no robust cross-family benefit. These are predictive
+results, not evidence of adaptive action selection, survival benefit or language.
+The final suite passes681 tests (658 original+23 new);3702 protected originals,
+complete on/off state/RNG equality, three archived E0 cases and all37,835 dense
+frames passed the [final audit](analysis/dense_resource_v082/verification.json).
+Seed tables and14 final PNGs are saved with the report and verification manifest.
+
+```bash
+# Fresh destinations; completed cases/models/reports refuse overwrite.
+# Use .venv/bin/python here for the existing optional analysis dependencies.
+export OPENBLAS_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1 OMP_NUM_THREADS=1
+mkdir -p data/dense_resource_v082_replay
+cp data/dense_resource_v082/before.json data/dense_resource_v082_replay/
+python3 -m experiments.dense_resource_study --root data/dense_resource_v082_replay --phase preregister
+python3 -m experiments.dense_resource_study --root data/dense_resource_v082_replay --phase validate
+python3 -m experiments.dense_resource_study --root data/dense_resource_v082_replay --phase pilot --seeds 10
+python3 -m experiments.dense_resource_analysis --root data/dense_resource_v082_replay --output analysis/dense_resource_v082_replay --phase pilot_review
+# Only a passing pilot permits training:
+python3 -m experiments.dense_resource_study --root data/dense_resource_v082_replay --phase training --seeds 10 11 12
+python3 -m experiments.dense_resource_analysis --root data/dense_resource_v082_replay --output analysis/dense_resource_v082_replay --phase training_review
+# Only a passing training review permits the fixed evaluation seeds:
+python3 -m experiments.dense_resource_study --root data/dense_resource_v082_replay --phase evaluation --seeds 20 21 22
+python3 -m experiments.dense_resource_analysis --root data/dense_resource_v082_replay --output analysis/dense_resource_v082_replay --phase evaluate
+python3 -m experiments.dense_resource_reporting --root data/dense_resource_v082_replay --output analysis/dense_resource_v082_replay
+python3 -m unittest discover -s tests -q > data/dense_resource_v082_replay/final_tests.log 2>&1
+python3 -m experiments.dense_resource_verify --root data/dense_resource_v082_replay --output analysis/dense_resource_v082_replay
+```
+
+The simulator and binary observer remain standard-library-only. Post-processing
+uses the existing optional numpy/pandas/matplotlib environment. Saved results
+are in `data/dense_resource_v082/` and `analysis/dense_resource_v082/`, using the
+repository's generated-artifact git-ignore convention. No signal meanings,
+social rewards, social attraction or ecological mechanisms are introduced.
 
 ## Future resource information and target support — v0.8.1
 
